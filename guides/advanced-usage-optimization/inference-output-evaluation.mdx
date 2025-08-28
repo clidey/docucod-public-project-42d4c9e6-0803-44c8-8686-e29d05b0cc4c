@@ -1,0 +1,216 @@
+---
+title: "Evaluating and Verifying BNN Inference Results"
+description: "A practical guide to validating outputs from SBNN models against reference results (e.g., from PyTorch or Tensorflow). Covers how to compare classification accuracy, troubleshoot discrepancies, and ensure reproducibility across configurations and datasets."
+---
+
+# Evaluating and Verifying BNN Inference Results
+
+Ensure your binarized neural network (BNN) inference outputs with SBNN align with trusted reference frameworks like PyTorch or TensorFlow. This guide helps you systematically validate classification accuracy, troubleshoot discrepancies, and maintain reproducibility reliably across different configurations and datasets.
+
+---
+
+## 1. Why Validate Your BNN Outputs?
+
+BNNs achieve performance gains by approximating traditional networks using bit-level computations. However, the precision of outputs can vary due to binarization, kernel implementation details, or environment setup. Validating output correctness ensures your SBNN configuration produces inference results meeting expected quality and accuracy.
+
+### Key Benefits:
+- Confirm functional correctness against verified reference results.
+- Identify configuration issues with inputs, weights, or batch sizes early.
+- Ensure reproducibility when tweaking parameters or switching between SBNN-32 and SBNN-64 modes.
+
+---
+
+## 2. Prerequisites
+
+Before starting output verification:
+
+- Complete your environment setup as per the [System Requirements](../getting-started/prerequisites-installation/system-requirements).
+- Successfully run a model inference using SBNN on your chosen dataset (MNIST, CIFAR-10, ImageNet).
+- Have prepared normalized datasets following the [Dataset Preparation & Verification](../getting-started/run-validate/dataset-preparation) guide.
+- Use known configuration files for weights and batch normalization parameters, as outlined in your model’s respective setup.
+
+Make sure you understand how to launch kernels and collect outputs as explained in the model-specific `.cu` files (e.g., `imagenet_resnet.cu`, `mnist_mlp.cu`).
+
+---
+
+## 3. Overview of the Validation Workflow
+
+The validation of BNN inference results with SBNN is a multistep process:
+
+<Steps>
+<Step title="Run the SBNN Inference Kernel">
+Prepare input data and weight files, launch the appropriate kernel (SBNN-32 or SBNN-64), and obtain inference outputs.
+
+- Use the provided example `main32()` or `main64()` functions depending on mode.
+- Confirm the kernel completes successfully without errors.
+- Download the output tensor from GPU memory using helper functions like `download_output()`.
+</Step>
+<Step title="Retrieve Ground Truth Labels and Reference Outputs">
+Gather ground truth labels from your dataset and reference outputs from PyTorch or TensorFlow for comparison.
+
+- Leverage provided scripts or utilities to extract expected classification labels.
+- Ensure preprocessed inputs (normalization, cropping) match reference framework conventions.
+</Step>
+<Step title="Compare Classification Accuracy">
+Use SBNN's built-in `validate_prediction()` function or your own to measure Top-1 and Top-5 accuracy.
+
+- Accuracy metrics indicate how well SBNN matches expected predictions.
+- Check for significant deviations that may imply issues.
+</Step>
+<Step title="Analyze Output Discrepancies">
+If accuracy is unexpectedly low, perform layer-wise output inspection with unpacked floating-point outputs.
+
+- Use `download_full_output()` to unpack bit-packed layers into float arrays.
+- Spot-check output activations for anomalies.
+- Validate intermediate layer outputs against reference frameworks if available.
+</Step>
+<Step title="Tune and Troubleshoot">
+Adjust batch size, GPU device selection, or model configuration as needed, then rerun validations.
+
+- Debug common issues such as mismatched dataset paths, batch size mismatches, or incorrect binary weights.
+- Refer to the troubleshooting guide for detailed solutions.
+</Step>
+</Steps>
+
+---
+
+## 4. Step-by-Step Instructions
+
+### Step 1: Running Your Model and Collecting Outputs
+
+1. Compile the corresponding `.cu` file for your model (e.g., `mnist_mlp.cu`, `imagenet_resnet.cu`) using the provided `Makefile`.
+
+2. Execute the binary with the desired SBNN mode:
+
+   - For 32-bit granularity: Ensure `main32()` is called.
+
+   - For 64-bit granularity: Ensure `main64()` is called.
+
+3. Verify dataset path and configuration file paths within the source code match your environment.
+
+4. Observe the console output for reported Top-1 and Top-5 accuracy metrics.
+
+5. The model will download the output from GPU memory via methods such as `Out32LayerParam::download_output()`.
+
+### Step 2: Obtaining Reference Results
+
+1. Prepare reference outputs from PyTorch or TensorFlow using identical preprocessing (e.g., normalization and cropping).
+
+2. Export or log predictions for the exact test subset used by SBNN.
+
+3. Maintain the same batch size and dataset order to guarantee comparability.
+
+### Step 3: Comparing Outputs with References
+
+- Accuracy checking is done internally within `validate_prediction(output, labels, output_size, batch)`.
+
+- For manual comparison, extract the predicted class with the highest output probability from SBNN outputs.
+
+- Confirm the predicted labels against the reference labels to compute Top-1/Top-5 accuracy.
+
+### Step 4: Diagnosing Differences
+
+- If discrepancies occur, use `download_full_output()` available in layer parameter classes (e.g., `Fc64LayerParam`) to extract full float outputs for per-layer inspection.
+
+- Compare float arrays with expected layer activations from reference frameworks.
+
+- Use partial dumps and targeted diagnostic prints to isolate incorrect layers or operations.
+
+---
+
+## 5. Common Pitfalls and Troubleshooting Tips
+
+<AccordionGroup title="Troubleshooting Common Validation Issues">
+<Accordion title="Inconsistent Dataset or Input Preprocessing">
+Verify that your input normalization, resizing, and cropping exactly match the processes used by the reference framework.
+
+Mismatch leads to significant accuracy drops.
+
+Check dataset file paths and batch loading order carefully.
+</Accordion>
+<Accordion title="Incorrect Weight or Batch Normalization Parameters">
+Ensure the configured paths to binary weights and batch normalization CSVs correspond exactly to those trained with the reference framework.
+
+File reading errors or wrong parameter loading will corrupt inference results.
+</Accordion>
+<Accordion title="Mismatched Batch Sizes">
+Batch size must match between SBNN execution and reference validation runs.
+
+If SBNN uses batch size 32 but reference output was generated on batch size 64, direct comparison fails.
+</Accordion>
+<Accordion title="GPU Device and Kernel Failures">
+Confirm that the GPU device specified in the source files is available and compatible.
+
+Check CUDA error codes and kernel launch status.
+
+Use CUDA debug flags if necessary.
+</Accordion>
+<Accordion title="Data Type Confusion Between SBNN-32 and SBNN-64">
+When switching between SBNN-32 and SBNN-64 modes, ensure the correct configuration files and network setups are used.
+
+Output binary formats differ, impacting result download and unpacking.
+</Accordion>
+</AccordionGroup>
+
+<Tip>
+Keep your environment consistent and document configured paths to datasets and model weights. Reproducibility is key when comparing output accuracy across runs and versions.
+</Tip>
+
+---
+
+## 6. Example: Validating ResNet-18 on ImageNet
+
+```cpp
+// Select GPU
+int dev = 6;
+cudaSetDevice(dev);
+
+// Read normalized ImageNet batch and labels
+float* images = (float*)malloc(batch*image_height*image_width*channels*sizeof(float));
+unsigned* image_labels = (unsigned*)malloc(batch*sizeof(unsigned));
+read_ImageNet_normalized("./imagenet_files.txt", images, image_labels, batch);
+
+// Load weights
+FILE* config_file = fopen("./pytorch_training/resnet_imagenet.csv", "r");
+
+// Initialize layers and GPU buffers...
+// Launch resnet64 kernel as per imagenet_resnet.cu example
+
+// Download output
+float* output = bout->download_output();
+
+// Validate prediction
+validate_prediction(output, image_labels, output_size, batch);
+```
+
+- This prints Top-1 and Top-5 accuracy allowing quick verification.
+- Use `download_full_output()` on layers to dig deeper if accuracy is low.
+
+---
+
+## 7. Advanced Validation Strategies
+
+- **Layer-by-layer output validation:** Compare each layer's output activations with reference framework dumps.
+- **Statistical distribution checks:** Plot output histograms and statistics to detect outliers or zeroed activations.
+- **Deterministic output testing:** Run the inference multiple times to verify output consistency over repeated runs.
+
+---
+
+## 8. Next Steps & Related Documentation
+
+- [Running Your First BNN Example](../getting-started/run-validate/running-models) — Covers the initial execution of SBNN models.
+- [Dataset Preparation & Verification](../getting-started/run-validate/dataset-preparation) — Ensures dataset correctness alignment.
+- [Choosing Between SBNN-32 and SBNN-64](../../guides/advanced-usage-optimization/sbnn32-vs-sbnn64) — Helps select modes with implications on accuracy and performance.
+- [Troubleshooting Common Setup Issues](../getting-started/run-validate/troubleshooting-common-issues) — If you encounter errors during execution or validation.
+
+---
+
+## 9. Resources
+
+- SBNN GitHub Repository: [https://github.com/uuudown/SBNN](https://github.com/uuudown/SBNN)
+- Example source code files like `imagenet_resnet.cu`, `mnist_mlp.cu` for reference implementations
+- Your model's PyTorch training CSV files for comparison
+
+---
+
+By following this guide, you confidently bridge your SBNN inference outputs with established references, enabling trustworthy deployment and further experimentation.
