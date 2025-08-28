@@ -1,0 +1,200 @@
+---
+title: "Troubleshooting Common Setup Issues"
+description: "Resolve frequent problems encountered during installation and first execution—including build errors, CUDA mismatches, dataset path issues, and basic validation tips. Find actionable advice to get unstuck quickly."
+---
+
+# Troubleshooting Common Setup Issues
+
+Efficiently running your first binarized neural network (BNN) inference with SBNN requires correct installation, configuration, and environment setup. This page addresses frequent problems encountered during installation and initial execution, helps you verify your setup, and get unstuck quickly with actionable advice.
+
+---
+
+## 1. Build and Compilation Errors
+
+### Cause:
+- CUDA Toolkit version mismatch or unsupported GPU architecture.
+- Incorrect NVCC flags, especially the GPU architecture flag (`-arch=sm_xx`).
+- Missing dependencies or incorrect environment paths.
+
+### Resolutions:
+1. **Verify CUDA Toolkit Compatibility**
+   - Ensure the installed CUDA Toolkit version matches the one supported by your GPU and SBNN.
+   - Use `nvcc --version` to check your CUDA version.
+   - Consult the [System Requirements](getting-started/prerequisites-installation/system-requirements) page for compatible CUDA versions.
+
+2. **Adjust GPU Architecture Flag in Makefile**
+   - Open `Makefile`.
+   - Locate `NVCC_FLAG` and update the `-arch=sm_xx` flag to match your GPU's architecture.
+     - Example for NVIDIA V100: `-arch=sm_70`
+     - Example for T4: `-arch=sm_75`
+   - Rebuild the binaries using `make clean && make`.
+
+3. **Enable Relocatable Device Code**
+   - The `-rdc=true` flag is necessary for cooperative kernel launches.
+   - Confirm this flag is present in `NVCC_FLAG`.
+
+4. **Check for Missing Libraries or Dependencies**
+   - Confirm all required libraries like `libjpeg` are installed.
+   - Install via your package manager if missing (e.g., `sudo apt install libjpeg-dev`).
+
+### Troubleshooting:
+- If build logs report errors related to undefined or missing CUDA symbols, revisit the `Makefile` compilation flags.
+- For unresolved header files, verify your CUDA include path environment variables.
+
+---
+
+## 2. CUDA Runtime Errors During Execution
+
+### Common Symptoms:
+- `cudaError` messages related to memory allocation, launch failures, or invalid device pointers.
+- Program crashes or unexpectedly terminates.
+
+### Causes:
+- Insufficient GPU memory for batch size or model parameters.
+- Mismatch between configured GPU device ID and available devices.
+- Incorrect dataset or model weight file paths.
+
+### Actionable Fixes:
+1. **Check GPU Device Selection**
+   - In source files (e.g., `cifar10_vgg.cu`, `alexnet.cu`), verify the device ID used in `cudaSetDevice(dev)` matches an available GPU.
+   - Use `nvidia-smi` to list device IDs.
+
+2. **Reduce Batch Size**
+   - High batch size leads to increased GPU memory demand.
+   - Edit the source file to lower the batch size (e.g., from `128` to `32`) and rebuild.
+
+3. **Validate Dataset and Model File Paths**
+   - Confirm dataset files exist and paths are accurate.
+     - Paths like `/home/lian599/raid/data/cifar10c/test_batch.bin` or `./imagenet_files.txt` are specified directly in examples.
+   - Ensure model weight files (e.g., `./pytorch_training/vgg_cifar10.csv`) are present and accessible.
+
+4. **Monitor GPU Memory Usage**
+   - Run `nvidia-smi` during execution to observe memory allocation peaks.
+
+### Troubleshooting Tips:
+- Use CUDA error checking macros (e.g., `CUDA_SAFE_CALL()`) in your code to isolate failing calls.
+- Run with lower resource usage configurations first.
+
+---
+
+## 3. Dataset Path and Format Issues
+
+### Problem:
+- Dataset files not found or incorrectly formatted.
+- Data loader failures or inconsistent input normalization causing inaccurate inference.
+
+### How to Verify:
+- Locate your datasets per the [Dataset Preparation & Verification](getting-started/run-validate/dataset-preparation) guide.
+- Ensure files are complete and accessible.
+- Check that normalization parameters match PyTorch standards as used in SBNN.
+
+### Remedies:
+1. **Use Provided Data Reading Functions**
+   - Verify that the dataset reading functions (`read_CIFAR10_normalized()`, `read_ImageNet_normalized()`, `read_MNIST_normalized()`) successfully load data.
+
+2. **Validate Dataset File Names & Locations**
+   - Match filenames in source code with actual files on disk.
+
+3. **Normalize Data Correctly**
+   - Confirm RGB channels are normalized correctly as per documentation and code comments.
+
+4. **Test Data Loading Separately**
+   - Run small test programs to verify dataset reading independently before integrating with SBNN.
+
+---
+
+## 4. Validation and Output Verification
+
+### What to Expect:
+- After running an example (e.g., `cifar10_vgg` or `alexnet`), the console outputs the Top-1 and Top-5 accuracy over the current batch.
+
+### Steps to Verify Correctness:
+1. Check the console output for accuracy numbers matching the expected range from the examples.
+2. If accuracy is extremely low or zero:
+   - Confirm dataset loading and preprocessing are correct.
+   - Validate model weight files are intact and match the dataset.
+   - Review the batch size and ensure it is consistent across dataset and model parameters.
+
+3. Use the output validation function `validate_prediction()` (in `utility.h`) to print predicted labels and compare with true labels.
+
+---
+
+## 5. Additional Tips & Best Practices
+
+- **Build Type:** For debugging, build with `-O0 -g -G` flags (uncomment in `Makefile`) to get detailed CUDA debug information.
+- **GPU Compatibility:** Prefer GPUs with compute capability 7.0 or higher for best performance.
+- **Switching Between SBNN32 and SBNN64:** Modify the main function in source files to call `main32()` or `main64()` depending on which implementation suits your hardware or model.
+- **Dataset and Model Alignment:** Always ensure the dataset corresponds to the model weights to avoid mismatch errors.
+- **Memory Management:** Track and free GPU memory properly if modifying examples.
+
+---
+
+## 6. When to Seek Help
+
+If you continue to encounter unresolved errors:
+- Review all previous steps carefully.
+- Consult the [Installation Guide](getting-started/prerequisites-installation/installing-sbnn) and [Configuration & Model Setup](getting-started/prerequisites-installation/configuration-basics) pages.
+- Visit the GitHub repository releases and issues at [SBNN GitHub](https://github.com/uuudown/SBNN) for updates and community support.
+- Check for FAQs or open a new issue with detailed logs and system information.
+
+---
+
+# Summary
+This troubleshooting guide empowers you to diagnose and resolve common issues when setting up and running your first BNN inference with SBNN. Focus areas include build errors, CUDA runtime problems, data path validation, and output correctness verification. Following these steps ensures a smooth onboarding and effective use of the SBNN framework.
+
+---
+
+<AccordionGroup title="Common Issues & Diagnostics">
+<Accordion title="Build Fails with CUDA Errors">
+Verify your CUDA version and GPU architecture flag (`sm_xx`) in the Makefile. Reinstall CUDA Toolkit if needed.
+</Accordion>
+<Accordion title="Runtime Memory Allocation Failures">
+Reduce batch size or check GPU memory usage with `nvidia-smi`. Confirm correct device selection.
+</Accordion>
+<Accordion title="Dataset Files Not Found or Invalid">
+Ensure dataset paths in source code are correct and files exist. Validate dataset format using provided data loaders.
+</Accordion>
+<Accordion title="Incorrect or Low Accuracy Outputs">
+Check dataset preprocessing and model weights alignment. Validate normalization and run smaller batches.
+</Accordion>
+</AccordionGroup>
+
+---
+
+# Example: Adjusting Makefile Architecture Flag
+```makefile
+# Example for NVIDIA V100
+NVCC_FLAG = -std=c++11 -O3 -w -arch=sm_70 -maxrregcount=64 -rdc=true
+```
+
+---
+
+# Example: Changing Batch Size in cifar10_vgg.cu
+```cpp
+const unsigned batch = 32; // Previously 128, reduced to fit GPU memory
+```
+
+---
+
+# Related Documentation
+- [System Requirements](getting-started/prerequisites-installation/system-requirements) for hardware and software prerequisites.
+- [Installation Guide](getting-started/prerequisites-installation/installing-sbnn) for detailed build and installation instructions.
+- [Configuration & Model Setup](getting-started/prerequisites-installation/configuration-basics) for editing parameters like GPU device and dataset paths.
+- [Dataset Preparation & Verification](getting-started/run-validate/dataset-preparation) to ensure correct input pipeline.
+- [Running Your First BNN Example](getting-started/run-validate/running-models) for executing test networks.
+
+<Check>
+Ensure your GPU device matches the configured device ID in each example source file.
+Verify dataset and weight files exist at specified paths.
+</Check>
+
+---
+
+# Getting Help
+- GitHub Repository: [https://github.com/uuudown/SBNN](https://github.com/uuudown/SBNN)
+- Community Issues and Pull Requests
+- Contact maintainers or HPC group at PNNL for advanced inquiries
+
+---
+
+Keep this troubleshooting guide handy as you proceed through installation, configuration, and your first successful BNN inference runs.
