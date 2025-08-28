@@ -1,0 +1,155 @@
+---
+title: "Supported Models & Datasets"
+description: "Survey the range of deep learning models and datasets SBNN supports out of the box—from MNIST MLP to CIFAR-10 VGG/ResNet to ImageNet AlexNet/ResNet. Learn how these models are implemented, benchmarked, and validated within SBNN using CUDA."
+---
+
+# Supported Models & Datasets
+
+Explore the range of deep learning models and datasets that SBNN supports directly out of the box. This page details how SBNN handles popular benchmark datasets—MNIST, CIFAR-10, and ImageNet—using multiple binarized neural network (BNN) architectures such as MLPs, VGG, ResNet, and AlexNet. Discover how these models are implemented, validated, and benchmarked within the SBNN framework leveraging CUDA-enabled GPU acceleration.
+
+---
+
+## Why This Matters
+
+Deep learning practitioners and researchers often require high-performance yet memory-efficient implementations of CNNs and MLPs that run efficiently on GPUs. SBNN provides ready-to-run implementations of several canonical models on major datasets,
+accelerated with bit-level operations that dramatically reduce memory footprint and inference latency.
+
+This page clarifies what models and datasets are supported and explains how SBNN integrates them cohesively for benchmarking and validation — empowering you to hit the ground running.
+
+---
+
+## Supported Datasets and Corresponding Models
+
+### MNIST — Simple Digit Classification with MLP
+- **Model:** A 4-layer multilayer perceptron (MLP) tailored for MNIST handwritten digits.
+- **Dataset Size:** 28x28 grayscale images, 10 output classes.
+- **Implementation Details:**
+  - Input binarization and fully connected layers leverage bit-packed 32/64-bit operations.
+  - Batched inference kernels enable high throughput with large batch sizes.
+- **Typical Use Case:** Fast prototyping and validation of binarized MLPs for classification on small-scale datasets.
+
+### CIFAR-10 — Moderate Complexity with VGG-like and ResNet-14 Networks
+- **Models:**
+  - **VGG-like CNN:** Deep convolutional network with 6 convolutional layers interleaved with pooling and 2 fully connected layers.
+  - **ResNet-14:** Residual network with basic blocks exploiting residual connections.
+- **Dataset Size:** 32x32 color images, 10 classes.
+- **Implementation Notes:**
+  - Convolution layers exploit bit-level packing of filters and activations with optimized CUDA kernels.
+  - Residual connections are efficiently handled through residual saving and injecting mechanisms.
+- **Use Case:** Benchmarking performance gains on middle-sized datasets and validating deeper BNN models.
+
+### ImageNet — Large-Scale Image Classification with AlexNet and ResNet-18
+- **Models:**
+  - **AlexNet:** Classic CNN architecture including 5 convolution layers, pooling, two large fully connected layers.
+  - **ResNet-18:** Deeper residual network with 18 layers designed for robustness in large-scale classification.
+- **Dataset Size:** 224x224 RGB images, 1000 classes.
+- **Implementation Highlights:**
+  - Image loading and preprocessing pipeline includes RGB normalization, resizing, and central cropping.
+  - Cooperative kernel launches synchronize complex multi-layer inference pipelines.
+  - Batch size and GPU device are configurable for targeted performance experiments.
+- **Use Case:** Demonstrating SBNN's capability to handle real-world large scale models with highly optimized CUDA bitwise operations.
+
+---
+
+## How Models Are Implemented in SBNN
+
+SBNN represents each model as a sequence of CUDA kernel calls corresponding to layers, fully utilizing bit-packing and efficient memory layout:
+
+- **Input Layers:** Convert floating-point inputs into binarized representations, maintaining data integrity for CNNs or MLPs.
+- **Convolutional Layers:** Implemented using bit-matrix multiplication and bit-convolution techniques; optimized kernels balance granularity for 32-bit and 64-bit per warp lane.
+- **Fully Connected Layers:** Employ bit-packed matrix multiplication, batch normalization, and binarization in fused kernels for seamless execution.
+- **Output Layers:** Provide inference outputs with optional batch normalization for final accuracy tuning.
+
+Example from the ImageNet ResNet-18 model (`imagenet_resnet.cu`):
+
+```cpp
+__global__ void resnet32(
+    In32Conv32LayerParam* bconv1, 
+    Conv32LayerParam* l1b1c1, 
+    Conv32LayerParam* l1b1c2,
+    // ... other conv layers ...
+    Fc32LayerParam* bfc1, 
+    Out32LayerParam* bout)
+{
+    grid_group grid = this_grid();
+    In32Conv32Layer(bconv1); grid.sync();
+    Conv32Layer(l1b1c1); grid.sync();
+    Conv32Layer(l1b1c2); grid.sync();
+    // Layers continue in sequence with grid synchronization
+    Fc32LayerBatched(bfc1); grid.sync();
+    Out32LayerBatched(bout);
+}
+```
+
+This pattern recurs for all supported models, adapting kernel and layer parameters to dataset and architecture requirements.
+
+---
+
+## Benchmarking and Validation
+
+SBNN includes scripts and functions to process dataset images, normalize them, and feed into binarized models.
+
+- Image loaders normalize RGB channels, resize images (ImageNet: resize shorter edge to 256, center crop 224x224).
+- Weight and threshold parameters are read from configuration files (`pytorch_training/` directory) to ensure consistency with PyTorch-trained models.
+- Accuracy is validated by comparing the inference predictions with ground truth labels provided in the datasets.
+- NVIDIA GPUs such as P100 and V100 are used for performance profiling to report Top-1 and Top-5 accuracies.
+
+---
+
+## Switching Between SBNN-32 and SBNN-64
+
+Users can select between two kernel implementations targeting different bit granularities:
+- **SBNN-32:** Each warp lane processes 32-bit unsigned integers, generally providing better performance for Bit-Matrix-Multiplication (BMM).
+- **SBNN-64:** Each warp lane processes 64-bit unsigned long long integers, often optimized for Bit-Convolution (BCONV).
+
+Switching involves replacing kernel calls in main functions, for example `main32()` vs. `main64()`, as well as setting appropriate device and batch configurations.
+
+---
+
+## Getting Started with Supported Models
+
+1. **Prepare dataset images and labels:** Use provided image reading C++ functions or existing normalized dataset files (e.g., `read_ImageNet_normalized`, `read_CIFAR10_normalized`, `read_MNIST_normalized`).
+2. **Obtain model weights:** Load the corresponding CSV files such as `resnet_imagenet.csv`, `vgg_cifar10.csv`, or `mlp_mnist.csv` from the `pytorch_training` directory.
+3. **Configure model parameters:** Instantiate and initialize layer parameter classes (e.g., `Conv32LayerParam`, `Fc32LayerParam`) with layer specifics and batch settings.
+4. **Compile and run:** Use the Makefile targets to compile models (`make imagenet_resnet`, `make cifar10_resnet`, `make mnist_mlp`, etc.) then execute the binary; monitor outputs and validate accuracy.
+
+<Tip>
+Ensure that your GPU architecture flag in the Makefile matches your system (e.g., `-arch=sm_70`) to leverage full CUDA performance.
+</Tip>
+
+---
+
+## Troubleshooting Common Issues
+
+- **Data loading errors:** Verify dataset path correctness and input file formats.
+- **Mismatch in batch size or layer dimensions:** Confirm that batch size set in source code matches dataset and model configuration.
+- **Invalid GPU device selection:** Use `cudaSetDevice(dev)` to select available GPU devices appropriately.
+- **Kernel launch failures due to resource settings:** Adjust the number of threads, blocks, and shared memory size as per GPU limits.
+
+For more detailed troubleshooting, refer to the **Troubleshooting Common Setup Issues** page.
+
+---
+
+## Summary of Supported Models and Datasets
+
+| Dataset  | Model(s)              | Key Features                             | Batch Size Defaults | Resolution          |
+|----------|-----------------------|----------------------------------------|---------------------|---------------------|
+| MNIST    | 4-layer MLP           | Simple input binarization, FC layers   | 1024                | 28x28 grayscale     |
+| CIFAR-10 | VGG-like, ResNet-14   | Conv and residual layers with pooling  | 32 or 64            | 32x32 RGB           |
+| ImageNet | AlexNet, ResNet-18    | Deep CNNs, complex preprocessing       | 32                  | 224x224 RGB         |
+
+---
+
+## Additional Resources
+
+- [GitHub Repository](https://github.com/uuudown/SBNN) — Access the full codebase and example configs.
+- Related Documentation:
+  - [What is SBNN?](../introduction-core-concepts/what-is-sbnn) — Understand core purpose and design.
+  - [System Architecture Overview](../product-architecture-features/architecture-overview) — Learn about kernel designs and data flow.
+  - [Choosing Between SBNN32 and SBNN64](../../guides/advanced-usage-optimization/sbnn32-vs-sbnn64) — Optimize implementation choices.
+
+---
+
+This page equips you with a clear map of what deep learning workloads are immediately runnable within SBNN and how to leverage them efficiently on modern GPUs. Dive into the source code files like `mnist_mlp.cu`, `cifar10_vgg.cu`, `imagenet_resnet.cu`, and `alexnet.cu` to see concrete examples of model setup and execution within SBNN's bit-operation framework.
+
+Start exploring these models today and unlock the full potential of binarized neural network inference accelerated by GPU bit operations.
