@@ -1,0 +1,245 @@
+---
+title: "Installation Guide"
+description: "Step-by-step instructions to download, configure, and build SBNN on your platform. Learn how to adjust compilation flags for your GPU architecture, set up the CUDA environment, and verify a successful build."
+---
+
+# Installation Guide
+
+Welcome to the SBNN Installation Guide. This step-by-step walkthrough will help you download, configure, and build the SBNN framework tailored to your GPU environment. You will learn how to adjust compilation parameters for your GPU architecture, set up necessary CUDA dependencies, and verify a successful build to get started with binarized neural network inference on your platform.
+
+---
+
+## 1. Prerequisites & System Requirements
+
+Before you begin installation, ensure your system meets the following requirements for a smooth setup process.
+
+### Hardware Requirements
+- **NVIDIA GPU with CUDA Compute Capability 7.0 or higher.** The default compilation flag targets `sm_70` architecture (e.g., NVIDIA V100).
+- **Minimum 8 GB GPU memory recommended** for running standard SBNN models like ImageNet or CIFAR-10.
+- **Sufficient host memory (RAM)** to load datasets and model weights.
+
+### Software Dependencies
+- **CUDA Toolkit** installed and correctly configured (compatible with your GPU). Version should support compute capability 7.0 or above.
+- **GNU Make** and a C++11 compatible compiler.
+- **libjpeg** installed, as SBNN links against it for image-related operations (`-ljpeg` in linking).
+
+### Access and Environment
+- An environment with **CUDA drivers correctly installed.**
+- Permissions to build and execute CUDA programs on the system.
+
+### Network Requirements
+- Internet access to clone/download the repository.
+
+<Tip>
+Always verify your CUDA installation with the `nvidia-smi` command and ensure your NVCC compiler is correctly accessible (`nvcc --version`).
+</Tip>
+
+---
+
+## 2. Downloading SBNN
+
+Begin by retrieving the source code from the official GitHub repository:
+
+```bash
+git clone https://github.com/uuudown/SBNN.git
+cd SBNN
+```
+
+This repository contains all source files, CUDA kernels, and configuration examples necessary for building and running binaries.
+
+---
+
+## 3. Configuring Compilation Flags
+
+The core compilation occurs via the provided **Makefile**. It uses NVIDIA's NVCC compiler with specific flags to optimize for your GPU architecture.
+
+### Adjusting GPU Architecture Flag
+- Open the `Makefile` and locate the `NVCC_FLAG` definition.
+- Modify the `-arch=sm_70` flag to match your NVIDIA GPU compute capability.
+  - For example, for an RTX 3080, use `-arch=sm_86`.
+  - For older GPUs, check their compute capability and use the appropriate `sm_xx` flag.
+
+Example snippet from `Makefile`:
+
+```makefile
+NVCC_FLAG = -std=c++11 -O3 -w -arch=sm_70 -maxrregcount=64 -rdc=true
+```
+
+Change `sm_70` to your target, e.g.: `-arch=sm_86`.
+
+### Optional Debug Build
+- For debugging, uncomment the debug flag section in the Makefile:
+
+```makefile
+# NVCC_FLAG = -std=c++11 -w -O0 -g -G -arch=sm_70 -maxrregcount=64 -rdc=true -Xptxas -v
+```
+
+This enables debug symbols and disables optimizations.
+
+<Tip>
+Ensure your nvcc version supports your target architecture. Running `nvcc --version` helps confirm compatibility.
+</Tip>
+
+---
+
+## 4. Building SBNN Binaries
+
+From the root directory, compile the binaries with **make**:
+
+```bash
+make
+```
+
+This command builds all available binaries including:
+
+- `cifar10_resnet`
+- `imagenet_resnet`
+- `alexnet`
+- `vggnet`
+- `mnist_mlp`
+
+### Build Output
+Successful builds produce executable binaries at the root:
+
+```bash
+ls
+# Example output
+cifar10_resnet  imagenet_resnet  alexnet  vggnet  mnist_mlp
+```
+
+### Clean Build
+To remove all binaries before a fresh build:
+
+```bash
+make clean
+```
+
+<Tip>
+If compilation fails, verify that CUDA Toolkit paths are correctly set in your environment variables and the GPU architecture matches your hardware.
+</Tip>
+
+---
+
+## 5. CUDA Environment Setup
+
+SBNN relies on CUDA runtime and device properties to perform efficiently.
+
+### Setting GPU Device
+In each `main()` function of the model `.cu` files, the GPU device index is explicitly set, e.g.,
+
+```c++
+int dev = 4;
+cudaSetDevice(dev);
+```
+
+Adjust this device index (`dev`) to point to the correct GPU on your system.
+
+### Dataset and Configuration File Paths
+- Dataset paths (e.g., CIFAR-10 or ImageNet binaries) are hardcoded in source files, e.g.,
+
+```c++
+string cifar10_dir = "/home/lian599/raid/data/cifar10c/test_batch.bin";
+```
+
+- Configuration CSV files containing pretrained weights and thresholds are specified similarly:
+
+```c++
+FILE* config_file = fopen("./pytorch_training/vgg_cifar10.csv","r");
+```
+
+***Action:** Modify dataset paths in the designated `.cu` source files before compiling or copy datasets/config files to expected locations.*
+
+<Tip>
+Set environment variables or script wrappers if you need to dynamically select GPU devices or datasets.
+</Tip>
+
+---
+
+## 6. Verifying a Successful Build and Setup
+
+Run one of the compiled binaries to verify proper setup. For instance:
+
+```bash
+./vggnet
+```
+
+### What to Expect
+- The program will load the dataset, open the configuration CSV, initialize layers, run the kernel on the GPU, and print inference accuracy statistics.
+- Output validation compares predicted results with ground truth labels to confirm correctness.
+
+### Confirmation Steps
+- The binaries complete without CUDA errors or crashes.
+- Inference accuracy metrics (Top-1, Top-5 where applicable) match documented results.
+
+<Tip>
+If the program prints errors related to file paths, update dataset or config file paths in the corresponding `.cu` source code.
+</Tip>
+
+---
+
+## 7. Adjusting Compilation for Your GPU Architecture
+
+You can tailor compilation performance by specifying the `sm_XX` compute capability corresponding to your NVIDIA GPU.
+  - Common values:
+    - Tesla V100: `sm_70`
+    - RTX 2080: `sm_75`
+    - RTX 3080/3090: `sm_86`
+  - Edit the `Makefile` accordingly.
+
+After adjustment:
+
+```bash
+make clean
+make
+```
+
+to ensure binaries incorporate optimized architecture flags.
+
+---
+
+## 8. Troubleshooting Common Build Issues
+
+### CUDA Compilation Errors
+- **Symptom:** Errors mentioning unsupported architecture, or missing headers.
+- **Solution:** Confirm CUDA Toolkit installation version, NVCC paths, and update `Makefile` `NVCC_FLAG` accordingly.
+
+### Binary Not Found or Permissions
+- **Symptom:** Executable cannot be found or lacks execute permission.
+- **Solution:** Run `make` from the root directory; run `chmod +x <binary>` if needed.
+
+### Dataset or Config File Missing
+- **Symptom:** Runtime errors about file open failure.
+- **Solution:** Verify dataset and config file paths in source `.cu` files, update paths or copy files to expected locations.
+
+### GPU Device Out of Range
+- **Symptom:** CUDA runtime error about invalid GPU device.
+- **Solution:** Adjust `dev` index in source files to an available GPU on your machine.
+
+---
+
+## 9. Next Steps
+
+After successful build and verification, proceed to:
+
+- [Configuration & Model Setup Guide](/getting-started/prerequisites-installation/configuration-basics) to learn how to customize model parameters and datasets.
+- [Running Your First BNN Example](/getting-started/run-validate/running-models) for executing inference workflows with sample datasets.
+- Explore core workflows such as [CIFAR-10 VGG & ResNet](../../guides/core-workflows/cifar10-vgg-resnet) or [ImageNet AlexNet & ResNet](../../guides/core-workflows/imagenet-alexnet-resnet).
+
+<Check>
+Ensure your GPU device number, dataset paths, and config CSV locations in source `.cu` files are correctly set before running binaries.
+</Check>
+
+---
+
+## 10. Additional Resources
+
+- [System Requirements](../prerequisites-installation/system-requirements) for detailed hardware and software prerequisites.
+- [Troubleshooting Common Setup Issues](../run-validate/troubleshooting-common-issues) if you encounter problems during build or execution.
+- The [SBNN GitHub Repository](https://github.com/uuudown/SBNN) for latest updates and source code reference.
+
+---
+
+This guide ensures you have a solid foundation to compile and launch SBNN workloads optimized for your GPU, enabling high-performance binarized neural network inference.
+
+
+---
