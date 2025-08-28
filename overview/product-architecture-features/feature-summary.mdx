@@ -1,0 +1,130 @@
+---
+title: "Feature Summary"
+description: "Quickly scan the high-value features: binary weight loading, bit-wise computation kernels, single-kernel execution, GPU performance measurement, and accuracy reporting. Understand the key differentiators and strengths users can leverage immediately."
+---
+
+# Feature Summary
+
+Discover the standout features that make SBNN a powerful framework for efficient binarized neural network (BNN) inference on GPUs. This page provides a clear snapshot of the key capabilities—including binary weight loading, bit-wise computation kernels, single-kernel execution, GPU performance measurement, and accuracy reporting—that equip you to unlock ultra-fast, memory-efficient neural network execution.
+
+---
+
+## Why This Matters
+
+Efficient binarized neural network inference hinges on leveraging bit-level parallelism while minimizing overhead and maximizing GPU utilization. SBNN addresses these challenges by implementing optimized features that accelerate model execution drastically compared to traditional floating-point implementations.
+
+By quickly scanning these feature highlights, you gain immediate insight into how SBNN empowers you to deploy high-performance BNNs on popular datasets and architectures with minimal setup and maximal impact.
+
+---
+
+## Key Features at a Glance
+
+### 1. Binary Weight Loading
+SBNN excels at loading pre-trained binary weights efficiently, using compact bit-packed formats that reduce memory footprint drastically compared to floating-point models.
+
+- Converts floating-point weights into bit-packed 32-bit or 64-bit unsigned integer representations.
+- Supports both fully connected (FC) and convolutional (Conv) layers with flexible packing strategies by output or input channels.
+- Facilitates easy loading of network configuration files containing binary weights and batch normalization parameters.
+
+*Example:* For a VGG-16 ImageNet model, weights are loaded from standard CSV files and packed into compact GPU memory buffers, speeding up loading and reducing transfer overhead.
+
+### 2. Bit-Wise Computation Kernels
+The heart of SBNN is its bit-level kernels designed to operate directly on packed binary data, offering exceptional speed while preserving accuracy.
+
+- Utilizes warp-level GPU cooperative groups to maximize parallelism.
+- Implements bit-matrix multiplication (BMM) and bit-convolution operations with popcount and xor for rapid bit comparisons.
+- Supports two workload granularities — SBNN32 and SBNN64 — to match specific model and hardware characteristics.
+- Layer implementations include input binarization, convolution layers (with options for pooling and residual injection), fully connected layers, and output layers.
+
+*Real scenario:* Running a ResNet-18 inference launches a single cooperative kernel that executes a sequence of binarized convolutional and fully connected layers using bit-wise XOR and popcount instructions.
+
+### 3. Single-Kernel Execution
+To reduce overhead from multiple kernel invocations and improve throughput, SBNN fuses the entire network inference into a single, large cooperative kernel.
+
+- Each network (e.g., CIFAR-10 ResNet-14, ImageNet AlexNet) is executed as a single kernel launch.
+- Synchronization within the kernel using CUDA cooperative groups ensures correct pipeline progression between layers.
+- Batch sizes are managed to saturate GPU cores and achieve maximal utilization.
+
+*Benefit:* This approach avoids expensive kernel launch overheads and maximizes data locality, leading to seamless execution of full networks.
+
+### 4. GPU Performance Measurement
+SBNN integrates precise GPU timing and performance measurement directly within kernels and host programs.
+
+- Uses CUDA events for wall-time measurements of entire inference runs.
+- Implements kernel-cycle timers to report per-layer execution time in GPU clock cycles.
+- Displays timing metrics immediately after inference to benchmark performance.
+
+*Practical tip:* Run SBNN on NVIDIA DGX or equivalent hardware and observe latency improvements at both the network level and individual layer level.
+
+### 5. Accuracy Reporting
+While focusing on speed and memory efficiency, SBNN guarantees reliable inference accuracy reporting.
+
+- Supports automatic validation of inference results against known image labels.
+- Reports Top-1 and Top-5 accuracy metrics per batch immediately after inference.
+- Provides utility functions to compare predictions with ground truth for datasets like MNIST, CIFAR-10, and ImageNet.
+
+*Scenario:* After running an ImageNet VGG or ResNet-18 model, the system outputs the predicted labels, batch accuracy, and confidence scores to help validate model correctness.
+
+---
+
+## Putting It All Together: A Typical User Flow
+
+1. **Prepare Model and Dataset:** Load a pretrained model's binary weights and normalize your input images.
+2. **Initialize Network Layers:** Use provided parameter classes for each layer type (e.g., In32Conv32LayerParam, Fc32LayerParam) to initialize weights and batch normalization data.
+3. **Launch Single Cooperative Kernel:** Execute the entire network inference in one kernel call, leveraging bit-wise kernels for convolution and fully connected layers.
+4. **Measure Performance:** Obtain GPU timing metrics per layer and overall inference latency.
+5. **Validate Accuracy:** Download inference output and compare top predictions with labels.
+
+This feature summary page arms you with clarity on these core capabilities so you can apply SBNN immediately to your GPU-accelerated BNN inference tasks.
+
+---
+
+## Practical Tips & Best Practices
+
+- **Choose Appropriate Implementation Variant:** SBNN offers two main granularity levels: SBNN32 for 32-bit lanes and SBNN64 for 64-bit lanes. Selecting the right variant depends on your model and GPU architecture.
+- **Batch Size Selection:** To harness full GPU core utilization via cooperative kernel launches, pick batch sizes that match your available GPU resources.
+- **Residual Features:** Some convolutional layers support saving and injecting residuals to enhance network accuracy and performance.
+- **Debugging Performance:** Utilize the built-in kernel timers (`SET_KERNEL_TIMER`, `TICK_KERNEL_TIMER`) to isolate bottlenecks layer by layer.
+
+---
+
+## Code Snippet: Launching a VGG-16 Network Inference on ImageNet (SBNN64)
+```cpp
+// Initialize layers with binary weights and batch norm parameters
+In32Conv64LayerParam* bconv1 = new In32Conv64LayerParam("Conv1", 224, 224, 3, 3, 3, 64, 32);
+conv64LayerParam* bconv2 = new Conv64LayerParam("Conv2", ...);
+// ... initialize other layers similarly
+
+// Setup kernel launch parameters
+int numThreads = 1024;
+cudaDeviceProp deviceProp;
+cudaGetDeviceProperties(&deviceProp, dev);
+int numBlocksPerSm;
+int shared_memory = 512*sizeof(int)*32;
+cudaFuncSetAttribute(vggnet64, cudaFuncAttributeMaxDynamicSharedMemorySize, 98304);
+cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, vggnet64, numThreads, shared_memory);
+
+void* args[] = {&bconv1_gpu, &bconv2_gpu, ..., &bout_gpu};
+
+// Launch cooperative kernel
+cudaLaunchCooperativeKernel((void*)vggnet64, numBlocksPerSm*deviceProp.multiProcessorCount, numThreads, args, shared_memory);
+
+// Post-run: download output and validate
+float* output = bout->download_output();
+validate_prediction(output, image_labels, 1000, 32);
+```
+
+---
+
+## Next Steps
+- For foundational understanding of SBNN, visit the [What is SBNN?](./what-is-sbnn) page.
+- Dive deeper into architectural details in the [System Architecture Overview](./architecture-overview).
+- Explore supported models and datasets in the [Supported Models & Datasets](./supported-models-datasets) guide to find practical examples.
+
+Together, these resources will help you apply the powerful, efficient binary neural network inference capabilities summarized here.
+
+---
+
+*Empowered with these insights, you're ready to leverage SBNN's high-value features and achieve blazing-fast, low-memory binarized neural network inference on GPUs.*
+
+---

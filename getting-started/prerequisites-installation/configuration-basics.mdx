@@ -1,0 +1,191 @@
+---
+title: "Configuration & Model Setup"
+description: "Configure SBNN to match your hardware and data paths. Covers editing source files for GPU selection, specifying model and weight locations, and preparing your environment for dataset ingestion."
+---
+
+# Configuration & Model Setup
+
+Configure SBNN to align with your GPU hardware and dataset locations by editing key source files. This guide walks you through setting GPU device selection, specifying model and weight file paths, and preparing your environment for seamless dataset ingestion. Proper configuration ensures efficient execution of binarized neural networks optimized for your system.
+
+---
+
+## 1. Overview of Configuration Essentials
+
+SBNN requires precise setup of several parameters within the source code before running your models. This includes:
+
+- Selecting the GPU device for execution.
+- Pointing to dataset files such as CIFAR-10, ImageNet, or MNIST.
+- Specifying the location of pre-trained model parameter files (weight and threshold CSVs).
+
+All configurations reside within the respective `.cu` model source files (e.g., `cifar10_vgg.cu`, `imagenet_resnet.cu`) and must be customized to your environment.
+
+---
+
+## 2. Configuring GPU Device and Dataset Paths
+
+Each model source file contains a `main32()` and `main64()` function, corresponding to the 32-bit and 64-bit SBNN implementations. Follow these steps to configure your setup:
+
+<Steps>
+<Step title="Step 1: Choose GPU Device">
+Locate the line setting the CUDA device number, for example:
+
+```cpp
+int dev = 4;  // example GPU device index
+cudaSetDevice(dev);
+```
+
+Update the `dev` variable to match the GPU ID on your system. Use `nvidia-smi` or your system's GPU monitoring tools to identify available devices.
+
+</Step>
+<Step title="Step 2: Set Dataset File Paths">
+Identify dataset paths for input images within `main32()` or `main64()`. Examples:
+
+- CIFAR-10:
+
+```cpp
+string cifar10_dir = "/home/lian599/raid/data/cifar10c/test_batch.bin";
+```
+
+- ImageNet:
+
+```cpp
+read_ImageNet_normalized("./imagenet_files.txt", images, image_labels, batch);
+```
+
+- MNIST:
+
+```cpp
+string mnist_dir = "/home/lian599/data/mnist/t10k-images-idx3-ubyte";
+string mnist_label = "/home/lian599/data/mnist/t10k-labels-idx1-ubyte";
+```
+
+Change these paths to point to the location on your machine where the dataset files reside.
+
+</Step>
+<Step title="Step 3: Specify Model Configuration Files">
+Model weights and batch normalization parameters are loaded from CSV files, for example:
+
+```cpp
+FILE* config_file = fopen("./pytorch_training/vgg_cifar10.csv","r");
+```
+
+Update this path to reflect your local copy of the model's weight configuration file. The `pytorch_training` directory holds pre-trained binary weight CSVs.
+
+</Step>
+</Steps>
+
+---
+
+## 3. Model and Weight Location Details
+
+SBNN expects model and weight files in CSV format under `pytorch_training` or similar directories. Key points:
+
+- Weight and threshold files correspond to specific network layers.
+- These files drive layer parameter initialization in classes like `Fc32LayerParam`, `Conv64LayerParam`, etc.
+- Custom models require you to provide appropriate CSV weight files.
+
+Ensure your configuration file paths are correctly accessible and that files are not corrupted.
+
+---
+
+## 4. Preparing Your Environment for Dataset Ingestion
+
+SBNN includes preprocessing utilities embedded in its code:
+
+- Image normalization is performed according to dataset-specific conventions (e.g., RGB normalization for ImageNet).
+- Binary formats must be matched precisely—misconfigured dataset path or format will cause runtime read errors.
+
+Verify dataset integrity and location before running inference.
+
+---
+
+## 5. Editing Source Files to Match Your Environment
+
+Common source files requiring adjustment:
+
+| File               | Purpose                            |
+|--------------------|----------------------------------|
+| `cifar10_vgg.cu`   | CIFAR-10 VGG-like model setting  |
+| `cifar10_resnet.cu`| CIFAR-10 ResNet-14 model settings|
+| `imagenet_resnet.cu`| ImageNet ResNet-18 configuration |
+| `alexnet.cu`       | ImageNet AlexNet configuration   |
+| `mnist_mlp.cu`     | MNIST 4-layer MLP configuration  |
+
+### Example configuration snippet from `cifar10_vgg.cu`:
+
+```cpp
+int dev = 4;  // GPU device
+cudaSetDevice(dev);
+
+string cifar10_dir = "/home/lian599/raid/data/cifar10c/test_batch.bin";
+FILE* config_file = fopen("./pytorch_training/vgg_cifar10.csv","r");
+```
+
+Adjust these paths to your hardware and file system.
+
+---
+
+## 6. Best Practices & Tips
+
+- Always confirm GPU device index matches your environment.
+- Use absolute paths for datasets and model files to avoid relative path errors.
+- Cross-check model configuration files are fully downloaded and correspond to the model variant you intend to execute.
+- Maintain consistent batch sizes between dataset ingestion and model parameter initialization.
+- Choose between 32-bit (`main32()`) and 64-bit (`main64()`) implementations based on your GPU capabilities and performance goals.
+
+<Tip>
+Modifying the source `.cu` files to set configuration parameters is necessary for initial setup. Automating configuration via external config files or command-line arguments is currently not supported.
+</Tip>
+
+---
+
+## 7. Common Pitfalls and Troubleshooting
+
+<AccordionGroup title="Troubleshooting Common Configuration Issues">
+<Accordion title="Incorrect GPU Device Selection">
+- Symptom: CUDA runtime error or no kernel launch.
+- Solution: Verify device ID with `nvidia-smi` and set correctly in the source code.
+</Accordion>
+<Accordion title="Dataset File Not Found or Corrupted">
+- Symptom: Runtime error reading dataset file or incorrect validation results.
+- Solution: Confirm dataset path correctness and file integrity. Use tools like `md5sum` to verify.
+</Accordion>
+<Accordion title="Model Configuration File Missing or Incompatible">
+- Symptom: Runtime crashes or load failures when reading weight CSV.
+- Solution: Ensure correct path and version of CSV weight files. Check that you are using files matching your model variant.
+</Accordion>
+<Accordion title="Mismatched Batch Size Settings">
+- Symptom: Runtime memory errors or incorrect outputs.
+- Solution: Align batch size values between the dataset ingestion and model initialization code.
+</Accordion>
+</AccordionGroup>
+
+---
+
+## 8. Next Steps
+
+Once your configuration is set:
+
+- Compile the binaries using the provided `Makefile`, ensuring `NVCC_FLAG` matches your system GPU architecture.
+- Run the chosen model executable.
+- Verify successful inference via accuracy output displayed in terminal.
+- Explore the [Running Your First BNN Example](/getting-started/run-validate/running-models) page for executing and validating models.
+- Refer to [System Requirements](/getting-started/prerequisites-installation/system-requirements) and [Installation Guide](/getting-started/prerequisites-installation/installing-sbnn) for environment setup.
+
+---
+
+## 9. References & Resources
+
+- [SBNN GitHub Repository](https://github.com/uuudown/SBNN)
+- `Makefile` for build commands.
+- Source Files: `cifar10_vgg.cu`, `imagenet_resnet.cu`, `alexnet.cu`, `mnist_mlp.cu`.
+- Dataset preprocessing code in `data.h` and `data.cpp`.
+
+---
+
+## 10. Relevant Source Code Links
+
+<Source url="https://github.com/uuudown/SBNN" paths={[{"path": "cifar10_vgg.cu", "range": "1-200"},{"path": "imagenet_resnet.cu", "range": "1-300"},{"path": "mnist_mlp.cu", "range": "1-220"}]} />
+
+
+

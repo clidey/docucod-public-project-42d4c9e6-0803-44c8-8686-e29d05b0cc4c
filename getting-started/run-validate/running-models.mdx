@@ -1,0 +1,168 @@
+---
+title: "Running Your First BNN Example"
+description: "Perform your initial execution of a sample network—such as MNIST MLP, CIFAR-10 VGG/ResNet, or ImageNet AlexNet/ResNet. Learn how to launch the executable, adjust batch sizes or precision, and interpret output metrics."
+---
+
+# Running Your First BNN Example
+
+Welcome to your first step executing a sample binarized neural network (BNN) using the SBNN framework. This guide walks you through launching a pre-built executable for standard networks like MNIST MLP, CIFAR-10 VGG/ResNet, or ImageNet AlexNet/ResNet. You’ll learn how to run the demo, adjust key parameters such as batch size and precision mode, and interpret output accuracy metrics.
+
+---
+
+## 1. Understanding the Sample Networks
+
+SBNN provides several representative networks to get you started quickly:
+
+- **MNIST MLP** — A compact 4-layer multilayer perceptron for handwritten digit classification.
+- **CIFAR-10 VGG and ResNet** — Popular convolutional architectures adapted for CIFAR-10 image classification.
+- **ImageNet AlexNet and ResNet-18** — Larger scale networks for ImageNet dataset, demonstrating state-of-the-art accuracy and performance.
+
+Each example is implemented in its respective `.cu` source file (e.g., `mnist_mlp.cu`, `cifar10_vgg.cu`, `imagenet_resnet.cu`, `alexnet.cu`) and includes both 32-bit (`main32()`) and 64-bit (`main64()`) precision kernel versions.
+
+---
+
+## 2. Preparing Your Environment
+
+Before running any example, ensure:
+
+- **Your GPU Device is Selected**: Within each source `.cu` file, look for the variable `dev` (e.g., `int dev = 6;`) and set it to the correct GPU index available on your system.
+
+- **Dataset Paths are Correct**: Confirm the paths to the dataset files:
+  - MNIST images and labels (e.g., `/home/lian599/data/mnist/t10k-images-idx3-ubyte`)
+  - CIFAR-10 binary files (e.g., `/home/lian599/raid/data/cifar10c/test_batch.bin`)
+  - ImageNet image list and files (e.g., `./imagenet_files.txt`)
+
+- **Model Configurations Are Referenced Properly**: These are the CSV files with the pretrained binarized weights and batch norm parameters (e.g., `./pytorch_training/mlp_mnist.csv` or `./pytorch_training/resnet_cifar10.csv`). Make sure they exist relative to your build directory.
+
+- **Batch Size Set as Desired**: Inside each example `main()` function, adjust the `batch` variable to control how many samples are processed together. Common defaults are 32 or 64, but you may increase this if GPU memory allows to boost throughput.
+
+
+---
+
+## 3. Running the Executable
+
+Follow these steps to run your first BNN example:
+
+<Steps>
+<Step title="Build the Application">
+If you have not built the executables yet, run `make` in the root directory. This compiles all sample networks using your configured CUDA architecture flags.
+
+```bash
+make
+```
+
+</Step>
+<Step title="Select Your Example">
+Choose which example binary to launch (e.g., `mnist_mlp`, `cifar10_resnet`, `imagenet_resnet`, `alexnet`, or `vggnet`).
+
+Example to run the CIFAR-10 ResNet:
+
+```bash
+./cifar10_resnet
+```
+
+</Step>
+<Step title="Adjust Precision Mode">
+To run 32-bit or 64-bit precision mode, edit the source `.cu` file and modify the `main` function to call either `main32()` or `main64()` as shown:
+
+```cpp
+int main() {
+    // To run 32-bit mode
+    main32();
+    // To run 64-bit mode
+    //main64();
+}
+```
+
+Rebuild after saving changes.
+
+</Step>
+<Step title="Monitor Kernel Timing and Output">
+The executable prints out kernel timing in milliseconds and reports the Top-1 and Top-5 accuracy of the batch processed.
+
+Sample output:
+
+```
+============================
+Inference_Time: 128.345 ms.
+============================
+======Label======
+3 4 2 1 0 ...
+=====Predict=======
+3 4 2 1 0 ...
+=====Batch Accuracy:32=======
+Top-1: 93.75%
+Top-5: 100.0%
+```
+</Step>
+<Step title="Change Batch Size or Other Parameters">
+If you want to increase batch size or tweak input image size, edit the respective parameters in the `main()` function for the example:
+
+```cpp
+const unsigned batch = 64;
+const unsigned image_height = 224;
+const unsigned image_width = 224;
+```
+
+Remember larger batch sizes consume more GPU memory.
+
+</Step>
+</Steps>
+
+---
+
+## 4. How to Interpret Output Metrics
+
+- **Labels**: The true integer class labels for each input image in the processed batch.
+- **Predicts**: The model’s top prediction per input sample in the batch.
+- **Top-1 Accuracy**: Percentage of samples where the top predicted class matches the label.
+- **Top-5 Accuracy**: Percentage where the label is within the model’s top 5 predictions — useful for datasets like ImageNet with many classes.
+
+Accuracy near pretrained baselines validates correct execution and data loading.
+
+---
+
+## 5. Tips for Success
+
+- **Match GPU Device Index** with your hardware using `nvidia-smi`.
+- **Ensure Data Files Are Accessible and Correct**: Missing or corrupted dataset files will cause runtime errors.
+- **Use 64-bit (main64) Mode** to fully leverage newer GPUs with better performance for BCONV operations.
+- **Increase Batch Size** for better GPU utilization and throughput, but monitor memory footprints.
+- **Recompile After Any Source Change** before rerunning.
+
+---
+
+## 6. Troubleshooting Common Issues
+
+<AccordionGroup title="Common Issues and Solutions">
+<Accordion title="Execution Fails to Launch CUDA Kernel">
+- Check your GPU device ID number set in the source.
+- Verify CUDA is installed and environment variables are configured.
+- Confirm GPU supports the Compute Capability set in `Makefile` (`-arch=sm_xx`).
+</Accordion>
+<Accordion title="File Not Found Errors for Dataset or Config Files">
+- Ensure the files exist at the specified relative or absolute paths.
+- Edit paths inside `.cu` source files to correct locations.
+</Accordion>
+<Accordion title="Low Accuracy or Validation Failure">
+- Confirm you are using correct and matching configuration files and datasets.
+- Check that preprocessing steps (e.g., normalization) run correctly.
+</Accordion>
+</AccordionGroup>
+
+---
+
+## 7. Additional Resources
+
+- [Installation Guide](../prerequisites-installation/installing-sbnn) for building the framework.
+- [Configuration & Model Setup](../prerequisites-installation/configuration-basics) to customize dataset and device settings.
+- [System Requirements](../prerequisites-installation/system-requirements) to verify hardware and software specs.
+- Review source code for each example under `*.cu` files in the repository to further understand model setup.
+
+---
+
+With these steps, you are ready to run your first binarized neural network with SBNN, unlock GPU-accelerated inference, and explore different network models and datasets confidently.
+
+---
+
+For the latest code and issues, visit the official repository: [https://github.com/uuudown/SBNN](https://github.com/uuudown/SBNN)

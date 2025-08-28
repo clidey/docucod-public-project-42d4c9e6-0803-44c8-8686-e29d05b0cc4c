@@ -1,0 +1,101 @@
+{
+  "background": {
+    "decoration": "gradient"
+  },
+  "colors": {
+    "dark": "#1E3A8A",
+    "light": "#60A5FA",
+    "primary": "#60A5FA"
+  },
+  "favicon": "/favicon.svg",
+  "fonts": {
+    "family": "Montserrat",
+    "format": "woff2",
+    "source": "https://fonts.gstatic.com/s/googlesansflex/v5/t5sJIQcYNIWbFgDgAAzZ34auoVyXkJCOvp3SFWJbN5hF8Ju1x6sKCyp0l9sI40swNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4USKMo6qQzwliVdHAy9jxTDHg_ugnAakpwGc-cxgUqDCIUI.woff2"
+  },
+  "icons": {
+    "library": "fontawesome"
+  },
+  "logo": {
+    "dark": "./logo/logo.svg",
+    "light": "./logo/logo.svg"
+  },
+  "name": "SBNN: Singular Binarized Neural Network based on GPU Bit Operations",
+  "navigation": {
+    "tabs": [
+      {
+        "groups": [
+          {
+            "group": "Introduction \u0026 Core Concepts",
+            "pages": [
+              "overview/introduction-core-concepts/what-is-sbnn",
+              "overview/introduction-core-concepts/core-concepts-terminology"
+            ]
+          },
+          {
+            "group": "Product Architecture \u0026 Feature Highlights",
+            "pages": [
+              "overview/product-architecture-features/architecture-overview",
+              "overview/product-architecture-features/supported-models-datasets",
+              "overview/product-architecture-features/feature-summary"
+            ]
+          },
+          {
+            "group": "Use Cases \u0026 Integration",
+            "pages": [
+              "overview/use-cases-integration/audience-use-cases",
+              "overview/use-cases-integration/integration-overview"
+            ]
+          }
+        ],
+        "tab": "Overview"
+      },
+      {
+        "groups": [
+          {
+            "group": "Install \u0026 Setup",
+            "pages": [
+              "getting-started/prerequisites-installation/system-requirements",
+              "getting-started/prerequisites-installation/installing-sbnn",
+              "getting-started/prerequisites-installation/configuration-basics"
+            ]
+          },
+          {
+            "group": "First Run \u0026 Validation",
+            "pages": [
+              "getting-started/run-validate/running-models",
+              "getting-started/run-validate/dataset-preparation",
+              "getting-started/run-validate/troubleshooting-common-issues"
+            ]
+          }
+        ],
+        "tab": "Getting Started"
+      },
+      {
+        "groups": [
+          {
+            "group": "Core Workflows",
+            "pages": [
+              "guides/core-workflows/run-mnist-mlp",
+              "guides/core-workflows/cifar10-vgg-resnet",
+              "guides/core-workflows/imagenet-alexnet-resnet"
+            ]
+          },
+          {
+            "group": "Advanced Usage \u0026 Optimization",
+            "pages": [
+              "guides/advanced-usage-optimization/sbnn32-vs-sbnn64",
+              "guides/advanced-usage-optimization/kernel-cooperative-groups",
+              "guides/advanced-usage-optimization/inference-output-evaluation"
+            ]
+          }
+        ],
+        "tab": "Guides"
+      }
+    ]
+  },
+  "styling": {
+    "codeblocks": "dark",
+    "eyebrows": "breadcrumbs"
+  }
+}

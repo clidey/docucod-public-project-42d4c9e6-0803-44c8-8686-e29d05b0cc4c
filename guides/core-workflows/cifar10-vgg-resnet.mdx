@@ -1,0 +1,294 @@
+---
+title: "CIFAR-10 Image Classification: VGG and ResNet Networks"
+description: "Learn how to leverage SBNN for image classification on the CIFAR-10 dataset using VGG-like and ResNet-14 models. This guide walks through loading CIFAR-10 data, selecting the network architecture, configuring kernel options, and analyzing validation performance versus PyTorch reference."
+---
+
+# CIFAR-10 Image Classification: VGG and ResNet Networks
+
+Leverage SBNN to perform efficient image classification on the CIFAR-10 dataset using VGG-like and ResNet-14 binarized neural network architectures. This guide walks you through loading and preprocessing CIFAR-10 data, selecting network architecture variants, configuring kernel executions, and evaluating validation accuracy against PyTorch references.
+
+---
+
+## 1. Overview
+
+### What You'll Achieve
+
+- Run image classification on CIFAR-10 using SBNN's VGG-like or ResNet-14 binarized models.
+- Prepare and normalize CIFAR-10 data correctly for SBNN consumption.
+- Initialize and configure each network layer with weights and batch normalization parameters.
+- Launch fully fused GPU cooperative kernels to execute entire networks efficiently.
+- Validate output results by comparing top-1 accuracy with PyTorch benchmarks.
+
+### Prerequisites
+
+- A CUDA-capable NVIDIA GPU compatible with your build (see [System Requirements](../getting-started/prerequisites-installation/system-requirements.md)).
+- Properly installed and built SBNN binaries targeting your GPU architecture (refer to [Installation Guide](../getting-started/prerequisites-installation/installing-sbnn.md)).
+- CIFAR-10 dataset prepared and normalized, ideally using SBNN's provided C++ loader (details in [Dataset Preparation & Verification](../getting-started/run-validate/dataset-preparation.md)).
+- Configured model weight files (`vgg_cifar10.csv` and `resnet_cifar10.csv`) in a readable path.
+
+### Expected Outcome
+
+- Successfully run the VGG-like or ResNet-14 models with SBNN on CIFAR-10.
+- Obtain validation accuracy results closely matching PyTorch inference.
+- Gain insight into setup, initialization, and kernel launch steps for large binarized CNNs on GPUs.
+
+### Time Estimate
+
+- Setup and build: 10–30 minutes (assuming hardware and software prerequisites met).
+- Running and validation: under 2 minutes per model.
+
+### Difficulty Level
+
+Intermediate: Familiarity with GPU programming concepts, CUDA runtime, and neural network inference workflows is recommended.
+
+---
+
+## 2. Running VGG-like Network on CIFAR-10
+
+### Step 1: Prepare Input Data
+
+- Allocate memory for input images (`batch * 32 * 32 * 3` floats) and label arrays.
+- Use `read_CIFAR10_normalized()` to load and normalize CIFAR-10 images from binary files.
+
+Example snippet:
+```cpp
+unsigned batch = 128;
+float* images = (float*)malloc(batch * 32 * 32 * 3 * sizeof(float));
+unsigned* labels = (unsigned*)malloc(batch * sizeof(unsigned));
+string cifar10_path = "/path/to/test_batch.bin";
+read_CIFAR10_normalized(cifar10_path, images, labels, batch);
+```
+
+### Step 2: Load VGG Model Weights
+
+- Open the VGG configuration file (e.g., `vgg_cifar10.csv`) which contains trained weights and batch normalization parameters.
+- This file will be used to initialize each network layer's weights.
+
+```cpp
+FILE* config_file = fopen("./pytorch_training/vgg_cifar10.csv", "r");
+```
+
+### Step 3: Initialize Network Layers
+
+- Create and initialize the convolutional, fully connected (FC), and output layers using corresponding SBNN64 parameter classes.
+- Follow the layer order and dimensions carefully as per CIFAR-10 VGG architecture:
+  - Conv layers: 3x3 filters, channels increase from 3 to 128, then 256, 512, etc.
+  - FC layers: 1024 hidden units.
+- Chain the GPU outputs as inputs to subsequent layers.
+
+Example for first conv layer:
+```cpp
+In32Conv64LayerParam* bconv1 = new In32Conv64LayerParam("Conv1", 32, 32, 3, 3, 3, 128, batch);
+In32Conv64LayerParam* bconv1_gpu = bconv1->initialize(images, config_file);
+```
+
+Repeat similarly for other conv (e.g., `Conv2` to `Conv6`), FC (`Fc1`, `Fc2`), and output (`Fout`) layers.
+
+### Step 4: Configure and Launch the Kernel
+
+- Retrieve CUDA device properties and set the number of threads per block (typically 1024).
+- Compute optimal number of blocks per streaming multiprocessor (SM) for kernel launch using `cudaOccupancyMaxActiveBlocksPerMultiprocessor()`.
+- Set kernel attributes such as dynamic shared memory size.
+- Prepare arguments array referencing all initialized GPU layer objects.
+- Launch cooperative kernel `vggnet64` to execute the full network in a single GPU call.
+
+Example:
+```cpp
+int numThreads = 1024;
+cudaDeviceProp deviceProp;
+cudaGetDeviceProperties(&deviceProp, device_id);
+int numBlocksPerSm;
+int shared_memory = 512 * sizeof(int) * 32;
+cudaFuncSetAttribute(vggnet64, cudaFuncAttributeMaxDynamicSharedMemorySize, 98304);
+cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, vggnet64, numThreads, shared_memory);
+
+void* args[] = {&bconv1_gpu, &bconv2_gpu, &bconv3_gpu, &bconv4_gpu, &bconv5_gpu, &bconv6_gpu, &bfc1_gpu, &bfc2_gpu, &bout_gpu};
+
+cudaLaunchCooperativeKernel((void*)vggnet64, numBlocksPerSm * deviceProp.multiProcessorCount, numThreads, args, shared_memory);
+```
+
+### Step 5: Download and Validate Output
+
+- After kernel completion, download the output from the last layer (`Fout`) back to host memory.
+- Use `validate_prediction()` utility to compute correctness by comparing against ground truth labels.
+
+```cpp
+float* output = bout->download_output();
+validate_prediction(output, labels, 10, batch);
+```
+
+### Step 6: Cleanup
+
+- Release allocated memory and delete dynamically created layer objects to prevent memory leaks.
+
+---
+
+## 3. Running ResNet-14 Network on CIFAR-10
+
+The ResNet-14 workflow closely follows VGG, with layer initialization adjusted for the residual blocks architecture.
+
+### Step 1: Prepare CIFAR-10 Data
+
+As in VGG, allocate input and label buffers and load normalized test batch.
+
+### Step 2: Load ResNet Weight Config
+
+Open `resnet_cifar10.csv` or your trained model's config file.
+
+```cpp
+FILE* config_file = fopen("./pytorch_training/resnet_cifar10.csv", "r");
+```
+
+### Step 3: Initialize Layers and Residuals
+
+- Initialize convolution layers corresponding to ResNet blocks with residual connections.
+- Set `save_residual` flag on layers generating output used for residual injection.
+- Pass saved residual GPU pointers into subsequent layers requiring them.
+
+Example initialization for first conv with residual saving:
+```cpp
+In32Conv64LayerParam* bconv1 = new In32Conv64LayerParam("Conv1", 32, 32, 3, 3, 3, 128, batch, 1, 1, true, 0, 0, false, true);
+bconv1_gpu = bconv1->initialize(images, config_file);
+```
+
+For residual injecting layers:
+```cpp
+Conv64LayerParam* l1b1c2 = new Conv64LayerParam("L1B1C2", ..., true, true, 128);
+l1b1c2_gpu = l1b1c2->initialize(config_file, prev_layer_gpu, bconv1->get_residual_gpu());
+```
+
+### Step 4: Launch ResNet Kernel
+
+- Configure thread/block counts similarly as with VGG.
+- Launch `resnet64` cooperative kernel with all layer param GPU pointers.
+
+### Step 5: Validate Outputs
+
+- Download predictions from the output layer.
+- Validate top-1 accuracy comparing to label data.
+
+### Step 6: Release Resources
+
+- Delete all layer parameters and free related allocations.
+
+---
+
+## 4. Practical Tips & Best Practices
+
+- **Batch Size:** Increasing batch size improves GPU occupancy and kernel throughput without sacrificing inference accuracy.
+- **GPU Selection:** Use the device ID supporting your architecture (e.g., `sm_70`) and configure in source.
+- **Model Configuration Files:** Keep weights and batch norm parameters organized and accessible to your build environment.
+- **Cooperative Kernel Launch:** Ensure your GPU supports cooperative launch and adjust shared memory sizes for best occupancy.
+- **Validation:** Always run output validation against expected labels to avoid silent inaccuracies.
+- **Resource Cleanup:** Explicitly delete all layer param instances after use to maintain clean GPU memory states.
+
+---
+
+## 5. Common Issues and Troubleshooting
+
+<Tip>
+If kernel launch fails:
+- Verify device compatibility with cooperative kernel launch.
+- Confirm proper batch size and thread block configuration.
+</Tip>
+
+<Tip>
+If validation accuracy is low:
+- Check dataset normalization correctness.
+- Confirm that the correct config file is loaded with the trained weights.
+- Ensure the network layers are initialized in correct sequence and fully set up.
+</Tip>
+
+<Tip>
+Memory allocation errors:
+- Double-check input/output buffer sizes following layer dimension formulas.
+- Free resources properly after runs and restart process.
+</Tip>
+
+---
+
+## 6. Example Code Snippet: Initializing and Launching CIFAR-10 VGG64
+
+```cpp
+int main64()
+{
+    int dev = 4;
+    cudaSetDevice(dev);
+    const unsigned batch = 128;
+    const unsigned output_size = 10;
+    const unsigned image_height = 32;
+    const unsigned image_width = 32;
+    const unsigned image_channel = 3;
+    const unsigned filter_height = 3;
+    const unsigned filter_width = 3;
+    const unsigned n_hidden = 1024;
+
+    // Load input images and labels
+    float* images = (float*)malloc(batch * image_height * image_width * image_channel * sizeof(float));
+    unsigned* labels = (unsigned*)malloc(batch * sizeof(unsigned));
+    string cifar10_path = "/home/user/data/cifar10c/test_batch.bin";
+    read_CIFAR10_normalized(cifar10_path, images, labels, batch);
+
+    // Open weights config
+    FILE* config_file = fopen("./pytorch_training/vgg_cifar10.csv", "r");
+
+    // Initialize layers
+    In32Conv64LayerParam* bconv1 = new In32Conv64LayerParam("Conv1", image_height, image_width, filter_height, filter_width, 3, 128, batch);
+    auto bconv1_gpu = bconv1->initialize(images, config_file);
+    Conv64LayerParam* bconv2 = new Conv64LayerParam("Conv2", bconv1->output_height, bconv1->output_width, filter_height, filter_width, 128, 128, batch, 1, 1, true, 2, 2);
+    auto bconv2_gpu = bconv2->initialize(config_file, bconv1->get_output_gpu());
+    // [... initialize other conv and fc layers similarly ...]
+
+    Fc64LayerParam* bfc1 = new Fc64LayerParam("Fc1", batch, bconv6->output_height * bconv6->output_width * 512, n_hidden);
+    auto bfc1_gpu = bfc1->initialize(config_file, bconv6->get_output_gpu());
+    Fc64LayerParam* bfc2 = new Fc64LayerParam("Fc2", batch, n_hidden, n_hidden);
+    auto bfc2_gpu = bfc2->initialize(config_file, bfc1->get_output_gpu());
+    Out64LayerParam* bout = new Out64LayerParam("Fout", batch, n_hidden, output_size, true);
+    auto bout_gpu = bout->initialize(config_file, bfc2->get_output_gpu());
+
+    // Setup kernel launch
+    int numThreads = 1024;
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, dev);
+    int numBlocksPerSm;
+    int shared_memory = 512 * sizeof(int) * 32;
+    cudaFuncSetAttribute(vggnet64, cudaFuncAttributeMaxDynamicSharedMemorySize, 98304);
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, vggnet64, numThreads, shared_memory);
+    void* args[] = {&bconv1_gpu, &bconv2_gpu, /*... other layers ...*/, &bfc1_gpu, &bfc2_gpu, &bout_gpu};
+
+    cudaLaunchCooperativeKernel((void*)vggnet64, numBlocksPerSm * deviceProp.multiProcessorCount, numThreads, args, shared_memory);
+
+    // Validate output
+    float* output = bout->download_output();
+    validate_prediction(output, labels, output_size, batch);
+
+    // Clean up
+    delete bconv1; delete bconv2; /*...*/ delete bfc1; delete bfc2; delete bout;
+    fclose(config_file);
+
+    return 0;
+}
+```
+
+---
+
+## 7. Next Steps & Further Reading
+
+- Explore the [Supported Models & Datasets](../../overview/product-architecture-features/supported-models-datasets.md) documentation to understand other network and dataset support.
+- Refer to the [System Requirements](../../getting-started/prerequisites-installation/system-requirements.md) guide for optimal hardware and software setup.
+- Dive into [Running Your First BNN Example](../../getting-started/run-validate/running-models.md) for foundational model launch workflows.
+- Learn the differences and trade-offs between SBNN-32 and SBNN-64 in [Choosing Between SBNN-32 and SBNN-64](../../guides/advanced-usage-optimization/sbnn32-vs-sbnn64.md).
+- For advanced performance tuning, see [Optimizing Performance with Cooperative GPU Kernels](../../guides/advanced-usage-optimization/kernel-cooperative-groups.md).
+
+---
+
+## 8. References
+
+- [SBNN Overview and Core Concepts](../../overview/introduction-core-concepts/what-is-sbnn.md)
+- [CIFAR-10 Dataset Preparation](../../getting-started/run-validate/dataset-preparation.md)
+- [SBNN Installation Guide](../../getting-started/prerequisites-installation/installing-sbnn.md)
+- Official SBNN GitHub repository: https://github.com/uuudown/SBNN
+
+---
+
+This guide empowers users to confidently deploy and evaluate VGG-like and ResNet-14 binarized networks on the CIFAR-10 dataset leveraging the efficient, single kernel execution capabilities of the SBNN framework, unlocking accelerated and memory-efficient image classification workflows on GPUs.

@@ -1,0 +1,224 @@
+---
+title: "Dataset Preparation & Verification"
+description: "Instructions on acquiring, structuring, and validating datasets for MNIST, CIFAR-10, and ImageNet. Details on using provided scripts for preprocessing images and verifying input pipelines against PyTorch results."
+---
+
+# Dataset Preparation & Verification
+
+Prepare your datasets accurately to ensure that SBNN can process MNIST, CIFAR-10, and ImageNet inputs correctly and validate results against PyTorch outputs. This guide walks you through acquiring, normalizing, structuring, and verifying datasets with provided scripts and source code.
+
+---
+
+## 1. Overview
+
+SBNN supports standard deep learning datasets including MNIST, CIFAR-10, and ImageNet. To ensure accurate inference:
+
+- Input images must be normalized and formatted as expected by SBNN
+- Labels must be batched and aligned correctly
+- Dataset pipelines are validated by comparing SBNN input processing with PyTorch references
+
+This page focuses exclusively on dataset preparation and validation workflows necessary to set up your inputs before running models.
+
+---
+
+## 2. Dataset Acquisition
+
+### MNIST
+
+- Download from the official source: http://yann.lecun.com/exdb/mnist/
+- Obtain the `*-images-idx3-ubyte` file for images and the `*-labels-idx1-ubyte` for labels.
+- These files contain handwritten digit images (28×28 pixels) and corresponding labels.
+
+### CIFAR-10
+
+- Download binary batch files from http://www.cs.toronto.edu/~kriz/cifar.html
+- Use `test_batch.bin` for inference and verification.
+- The images are 32×32 pixels with 3 color channels.
+
+### ImageNet
+
+- Download ImageNet dataset from http://www.image-net.org/download
+- Provide a description file listing image paths and labels, e.g., `imagenet_files.txt`, with format:
+
+  ```
+  /path/to/image1.jpg, 123
+  /path/to/image2.jpg, 42
+  ...
+  ```
+
+The description file allows batch processing and label association.
+
+---
+
+## 3. Dataset Structuring & Normalization
+
+SBNN expects input tensors normalized and arranged according to the model requirements. Normalization keeps model accuracy aligned with PyTorch references.
+
+### MNIST
+
+- Image shape: `[batch, channel=1, height=28, width=28]`
+- Normalization: pixel value converted to float, normalized by mean=0.1307 and std=0.3081 using:
+
+  ```c++
+  normalized_pixel = (raw_pixel / 255.0f - 0.1307f) / 0.3081f;
+  ```
+
+- Use the function `read_MNIST_normalized(string filename, string labelname, float* images, unsigned* labels, unsigned batch)` for loading and normalizing batch data.
+
+### CIFAR-10
+
+- Image shape: `[batch, channel=3, height=32, width=32]`
+- Normalize per channel with mean and std:
+
+  | Channel | Mean   | Std    |
+  |---------|--------|--------|
+  | R       | 0.4914 | 0.2470 |
+  | G       | 0.4822 | 0.2435 |
+  | B       | 0.4465 | 0.2616 |
+
+- Normalized pixel computation:
+
+  ```c++
+  normalized_pixel = (raw_pixel / 255.0f - mean) / std;
+  ```
+
+- Use `read_CIFAR10_normalized(string filename, float* images, unsigned* labels, unsigned batch)` to load and normalize.
+
+### ImageNet
+
+- Images resized to 224x224 with 3 channels.
+- Preprocessing includes:
+  - Bilinear resizing to keep smaller edge to 256
+  - Center cropping to 224×224
+  - Channel normalization with means and stds:
+
+    | Channel | Mean  | Std   |
+    |---------|-------|-------|
+    | R       | 0.485 | 0.229 |
+    | G       | 0.456 | 0.224 |
+    | B       | 0.406 | 0.225 |
+
+- Use `read_ImageNet_normalized(const char* descfilename, float* images, unsigned* labels, int batch)` passing a description file listing image paths and labels.
+
+- Normalization formula for each pixel:
+
+  ```c++
+  normalized_pixel = ((raw_pixel / 255.0f) * std_multiplier) - mean_adjustment;
+  // std_multiplier and mean_adjustment as per SBNN's scaling
+  ```
+
+Refer to `data.cpp` and scripts like `process_one_image.py` for detailed image loading and processing.
+
+---
+
+## 4. Using Provided Data Loading Functions
+
+SBNN provides C++ functions in `data.cpp` and `data.h` to read and normalize datasets:
+
+| Function Name              | Dataset  | Format             | Description                                   |
+|----------------------------|----------|--------------------|-----------------------------------------------|
+| `read_MNIST_raw`           | MNIST    | Raw unsigned char  | Reads raw MNIST images and labels              |
+| `read_MNIST_normalized`    | MNIST    | Normalized floats  | Reads and normalizes MNIST dataset              |
+| `read_CIFAR10_raw`         | CIFAR-10 | Raw unsigned ints  | Reads raw CIFAR-10 images and labels           |
+| `read_CIFAR10_normalized`  | CIFAR-10 | Normalized floats  | Reads and normalizes CIFAR-10 dataset           |
+| `read_ImageNet_raw`        | ImageNet | Raw unsigned ints  | Reads raw ImageNet images and labels            |
+| `read_ImageNet_normalized` | ImageNet | Normalized floats  | Reads and normalizes ImageNet images and labels |
+
+### Example: Loading Normalized MNIST Data
+
+```c++
+const unsigned batch = 1024;
+float* images = (float*)malloc(batch * 28 * 28 * sizeof(float));
+unsigned* labels = (unsigned*)malloc(batch * sizeof(unsigned));
+read_MNIST_normalized("/path/to/t10k-images-idx3-ubyte", "/path/to/t10k-labels-idx1-ubyte", images, labels, batch);
+```
+
+### Example: Loading Normalized ImageNet Data
+
+```c++
+const unsigned batch = 32;
+float* images = (float*)malloc(batch * 3 * 224 * 224 * sizeof(float));
+unsigned* labels = (unsigned*)malloc(batch * sizeof(unsigned));
+read_ImageNet_normalized("./imagenet_files.txt", images, labels, batch);
+```
+
+---
+
+## 5. Verification with PyTorch
+
+To ensure your dataset pipeline is correctly configured:
+
+- Use SBNN's normalization constants and image preprocessing exact matches from PyTorch standards.
+- Cross-check loaded data using provided Python scripts such as `process_one_image.py` which shows pixel normalization and processing.
+- Validate SBNN inputs by comparing output activations with results from the PyTorch model checkpoints included in the repository under `pytorch_training`.
+
+Within SBNN model code (e.g., `mnist_mlp.cu`, `imagenet_vgg.cu`), outputs are validated by:  
+- Downloading GPU output back to the host  
+- Running `validate_prediction(output, image_labels, output_size, batch);` functions  
+- Comparing classification accuracy and output activations.
+
+This ensures dataset inputs and preprocessing are correct before running inference kernels.
+
+---
+
+## 6. Tips and Best Practices
+
+- **Batch Size Consistency**: Ensure the batch size used in dataset loading matches the `batch` parameter in your model setup source files.
+- **File Path Accuracy**: Update dataset paths in your source files (e.g., `mnist_mlp.cu`, `imagenet_vgg.cu`) to the actual locations of your downloaded datasets.
+- **Normalization Constants**: Stick to provided normalization constants in data loading APIs to maintain consistency.
+- **Validate Early**: Run data normalization scripts or load a small batch and print sample pixel values to check correctness before large batch inference.
+- **ImageNet Description File**: Maintain accurate paths and labels in the description `.txt` file for ImageNet batch processing.
+- **Memory Allocation**: Allocate host buffers for images and labels sized to accommodate the batch and image dimensions.
+
+---
+
+## 7. Troubleshooting Common Issues
+
+<AccordionGroup title="Dataset Preparation Troubleshooting">
+<Accordion title="Incorrect Image Normalization">
+Ensure you apply the exact normalization formula per channel and dataset. Verify pixel value ranges and correct mean/std parameters.
+</Accordion>
+<Accordion title="File Not Found or Permission Errors">
+Check that dataset files exist at specified paths and your application has read permissions.
+</Accordion>
+<Accordion title="Batch Size Mismatch">
+Consistent batch size is crucial. If inference crashes or yields poor accuracy, confirm your dataset loading batch size matches model configuration.
+</Accordion>
+<Accordion title="Image Shape and Channel Order Errors">
+Verify that images are loaded in the expected CHW (Channel-Height-Width) or HWC ordering as required by SBNN.
+</Accordion>
+</AccordionGroup>
+
+---
+
+## 8. Next Steps
+
+Once the datasets are prepared and verified:
+
+- Proceed to [Running Your First BNN Example](/getting-started/run-validate/running-models) to run models on the prepared datasets.
+- Configure dataset paths, batch size, and GPU selection as described in [Configuration & Model Setup](/getting-started/prerequisites-installation/configuration-basics).
+- For advanced validation of output results, consult [Evaluating and Verifying BNN Inference Results](/guides/advanced-usage-optimization/inference-output-evaluation).
+
+---
+
+For precise details, refer directly to the source code files:
+
+- `data.cpp` and `data.h` handle all data reading and normalization.
+- Model source files like `mnist_mlp.cu`, `imagenet_vgg.cu` show dataset usage patterns.
+
+This foundation supports stable, validated input feeding into the SBNN binarized neural network models.
+
+
+---
+
+<Check>
+Ensure dataset files are downloaded and paths correctly set in your source code before running data loading functions.
+</Check>
+<Note>
+Normalization is critical to match SBNN's expected input data distribution and ensure model accuracy.
+</Note>
+<Tip>
+Start with small batch sizes to validate dataset correctness before scaling up.
+</Tip>
+
+---

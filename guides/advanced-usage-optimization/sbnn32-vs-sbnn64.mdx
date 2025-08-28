@@ -1,0 +1,188 @@
+---
+title: "Choosing Between SBNN-32 and SBNN-64"
+description: "Demystifies the choice between 32-bit and 64-bit workload granularity in SBNN. Provides in-depth guidance on when to use each mode, the impact on matrix and convolution operations, performance trade-offs, and how to configure and test both approaches on different models through practical examples."
+---
+
+# Choosing Between SBNN-32 and SBNN-64
+
+## 1. Overview
+
+This guide helps you confidently select between the SBNN-32 and SBNN-64 modes in SBNN, which represent different workload granularities for binarized neural network inference on GPUs. Understanding this choice is crucial because it directly affects performance, resource usage, and suitability for specific network architectures such as matrix-based fully-connected layers or convolutional neural networks.
+
+### What You Will Learn
+- The fundamental difference between SBNN-32 and SBNN-64 implementations.
+- When to prefer one over the other based on model architecture and operation types.
+- How to configure and run each mode for common example networks.
+- Performance trade-offs and practical testing methodology.
+
+## 2. Key Concepts
+
+- **SBNN-32**: Processes workloads with 32-bit granularity where each warp lane operates on 32-bit unsigned integers.
+- **SBNN-64**: Processes workloads in 64-bit granularity with each warp lane operating on 64-bit unsigned long long integers.
+
+The key practical impact lies in how bit-matrix multiplication (BMM) and bit-convolution (BCONV) operations perform under each mode:
+
+- BMM tends to perform better with **SBNN-32**.
+- BCONV benefits from **SBNN-64** due to hardware efficiency in 64-bit manipulation.
+
+
+## 3. When to Use SBNN-32 vs. SBNN-64
+
+| Use Case                                  | Recommended Mode | Reasoning                                                                                         |
+|-------------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
+| Fully-Connected Layers (e.g., MLP for MNIST, FC layers in AlexNet) | SBNN-32          | 32-bit lanes match matrix multiplication well, optimizing throughput and resource use.         |
+| Convolutional Layers (CIFAR-10 VGG, ResNet, ImageNet CNNs)          | SBNN-64          | Larger granularity better aligns with convolution memory patterns and GPU word width.          |
+| Mixed Models with Both FC & Convolution Layers                      | Test both        | Performance depends on layer composition; benchmark to choose optimal mode.                     |
+
+
+## 4. Practical Configuration
+
+### Switching Between Modes
+
+You switch between SBNN-32 and SBNN-64 by editing the main source files for your model:
+
+- Change the call in the `main()` function to `main32()` for SBNN-32 or `main64()` for SBNN-64.
+- Adjust device ID, dataset path, and model configuration file paths as needed.
+
+### Example: AlexNet on ImageNet
+
+#### SBNN-32 Setup
+
+```cpp
+int main()
+{
+    main32(); // Runs AlexNet with SBNN-32 mode
+}
+```
+
+#### SBNN-64 Setup
+
+```cpp
+int main()
+{
+    main64(); // Runs AlexNet with SBNN-64 mode
+}
+```
+
+### Common Parameters
+
+- **Batch size**: Typically 32 for ImageNet in SBNN-32 and SBNN-64.
+- **Input image size**: 224x224 with 3 channels.
+- **Output size**: 1000 classes for ImageNet.
+
+### Building and Running
+
+- Use the `Makefile` with your chosen executable, e.g., `make alexnet`.
+- Run the binary and observe output accuracy and timing metrics.
+
+
+## 5. Understanding the Model Execution Flow
+
+Each mode executes its respective kernel function across layers:
+
+- **SBNN-32** uses kernels like `alexnet32`, running convolutions and fully-connected layers with 32-bit lane granularity.
+- **SBNN-64** uses kernels like `alexnet64`, optimized for 64-bit lane processing.
+
+Kernel invocation leverages CUDA cooperative groups and dynamically sets shared memory for optimal occupancy.
+
+
+## 6. Performance Trade-offs and Observations
+
+- **SBNN-32** provides better performance on matrix-heavy layers due to finer granularity in bit-parallel multiplication.
+- **SBNN-64** excels in convolutional layers utilizing 64-bit word operations that align more naturally with GPU memory and computation.
+
+Benchmark your specific use case by running both modes and comparing:
+
+- Kernel execution time.
+- Resource usage (shared memory, registers).
+- Inference accuracy (should be consistent).
+
+
+## 7. Step-by-Step: Running Both Modes for a Model
+
+<Steps>
+<Step title="Prepare Your Environment">
+Ensure you have built SBNN successfully with your system’s CUDA environment and have dataset and model weight files ready. Refer to the Installation Guide and Configuration & Model Setup if needed.
+</Step>
+<Step title="Edit Model Source for Mode Selection">
+Open the `.cu` source file for your target model (e.g., `alexnet.cu`).
+Modify the `main()` function:
+- Call `main32()` to run in SBNN-32 mode.
+- Call `main64()` to run in SBNN-64 mode.
+</Step>
+<Step title="Configure Settings">
+Set the correct GPU device ID.
+Set dataset file paths.
+Ensure model weight file path points to appropriate CSV files.
+</Step>
+<Step title="Build and Run">
+Build using `make` and run the executable.
+Check logs for kernel timing and validation accuracy.
+</Step>
+<Step title="Switch and Compare">
+Repeat the steps switching the `main()` call to the opposite mode.
+Compare results and decide on the best mode for your workload.
+</Step>
+</Steps>
+
+## 8. Code Examples
+
+Below is a simplified snippet from the AlexNet example showing the kernel launches for both modes:
+
+```cpp
+// For SBNN-32
+cudaLaunchCooperativeKernel((void*)alexnet32, numBlocks, numThreads, args, shared_memory);
+
+// For SBNN-64
+cudaLaunchCooperativeKernel((void*)alexnet64, numBlocks, numThreads, args, shared_memory);
+```
+
+Both `alexnet32` and `alexnet64` kernels follow a similar layer sequence but differ in internal data types and bitwise operations.
+
+
+## 9. Tips and Best Practices
+
+- Always verify dataset path and model config files are accessible and correctly formatted.
+- Test with small batch sizes first to validate setup.
+- Use the batch size recommended per example to achieve optimal GPU utilization (e.g., 32 for ImageNet models).
+- Remember the difference in lane granularity impacts shared memory usage and register pressure.
+- Consult `sbnn32_param.h` and `sbnn64_param.h` for detailed parameter structures and memory size estimations.
+
+
+## 10. Troubleshooting
+
+<AccordionGroup title="Common Issues When Switching Between SBNN-32 and SBNN-64">
+<Accordion title="Build or Compilation Errors">
+- Verify that you include the correct header files (`sbnn32_param.h` for 32-bit, `sbnn64_param.h` for 64-bit).
+- Confirm your `Makefile` is unchanged and the correct `.cu` files are compiled.
+</Accordion>
+<Accordion title="CUDA Runtime Errors">
+- Ensure device compute capability matches architecture `sm_xx` flag.
+- Check kernel launch parameters for occupancy.
+</Accordion>
+<Accordion title="Dataset or Model Path Problems">
+- Double-check file paths in source code match actual location.
+- Validate dataset preprocessing step matches expected normalization.
+</Accordion>
+<Accordion title="Mismatch in Output or Accuracy">
+- Make sure batch sizes and input dimensions are consistent between modes.
+- Rebuild weights if needed; binary weights are mode-specific.
+</Accordion>
+</AccordionGroup>
+
+
+## 11. Next Steps
+
+After mastering mode selection:
+
+- Explore [Choosing Between SBNN-32 and SBNN-64](https://your-docs-url.com/guides/advanced-usage-optimization/sbnn32-vs-sbnn64) (this guide).
+- Try running and comparing models in the [Core Workflows guides](https://your-docs-url.com/guides/core-workflows).
+- Dive into performance tuning through [Optimizing Performance with Cooperative GPU Kernels](https://your-docs-url.com/guides/advanced-usage-optimization/kernel-cooperative-groups).
+- Validate inference outputs with [Evaluating and Verifying BNN Inference Results](https://your-docs-url.com/guides/advanced-usage-optimization/inference-output-evaluation).
+
+
+---
+
+For detailed source code references, see the [`alexnet.cu`](https://github.com/uuudown/SBNN/blob/main/alexnet.cu) and [`sbnn32_param.h`](https://github.com/uuudown/SBNN/blob/main/sbnn32_param.h) files in the SBNN GitHub repository.
+
+---

@@ -1,0 +1,128 @@
+---
+title: "System Requirements"
+description: "Understand the minimum hardware and software prerequisites needed to run SBNN, including supported NVIDIA GPUs, CUDA Toolkit versions, and recommended system configurations for optimal performance."
+---
+
+# System Requirements for SBNN
+
+To successfully run SBNN, it is essential to ensure your system meets the minimum hardware, software, and environment prerequisites. This guide provides clear, actionable information to help you prepare your system for optimal SBNN performance.
+
+---
+
+## 1. Hardware Requirements
+
+SBNN relies heavily on NVIDIA GPUs to accelerate binarized neural network (BNN) inference through CUDA-enabled bit-level parallelism. Your hardware choice directly impacts feasibility and performance.
+
+### Supported NVIDIA GPUs
+- GPUs must support CUDA Compute Capability 7.0 or higher (e.g., NVIDIA Volta, Turing, Ampere architectures).
+- Confirm your GPU architecture matches your CUDA compilation flags, particularly the `-arch=sm_70` or higher in the `Makefile` (adjust to your device).
+
+### Minimum GPU Specifications
+- **Compute Capability:** 7.0 or above
+- **Memory:** At least 16 GB to accommodate large batch sizes and model parameters
+- **Parallelism:** Multi-Streaming Multiprocessor (SM) count correlates with performance (more SMs provide more parallel execution units).
+
+### System RAM
+- Minimum 16 GB RAM is recommended to handle data loading and preprocessing, especially for large batches and ImageNet-scale inputs.
+
+### Storage
+- Fast SSD storage is recommended for quick access to the large dataset files and configuration files.
+
+---
+
+## 2. Software Requirements
+
+SBNN is built on top of NVIDIA CUDA and targets modern Linux environments.
+
+### Operating System
+- 64-bit Linux distribution with a recent kernel (e.g., Ubuntu 18.04 or later).
+
+### CUDA Toolkit
+- CUDA Toolkit version 10.1 or newer is required.
+- Corresponding NVIDIA driver must be installed and compatible with CUDA toolkit.
+
+### Compiler
+- NVIDIA CUDA Compiler (`nvcc`) supporting C++11 is required.
+- The provided `Makefile` uses C++11 standard and sets flags accordingly.
+
+### Dependencies
+- Standard CUDA libraries
+- JPEG library (`-ljpeg`) as linked in the Makefile
+
+### Additional Tools
+- Basic POSIX utilities, GCC/G++ for compiling host code
+
+---
+
+## 3. Environment Configuration
+
+### GPU Device Selection
+- The sample source files (e.g., `mnist_mlp.cu`) specify default GPU devices via `cudaSetDevice(dev)`.
+- Update the device ID in the source before compilation to match your hardware.
+
+### Dataset Paths
+- Dataset files for MNIST, CIFAR-10, and ImageNet must be downloaded and paths updated inside source files (e.g., `/home/lian599/data/mnist/t10k-images-idx3-ubyte`).
+
+### Network Configuration Files
+- Network weight and batch-normal configuration files are loaded at runtime (e.g., `./pytorch_training/mlp_mnist.csv`).
+- Ensure these configuration CSVs exist and paths are correctly set in your source or execution environment.
+
+---
+
+## 4. Performance Recommendations
+
+- Use GPUs with higher SM counts and memory bandwidth for the best performance.
+- Increase batch size where memory permits to better saturate GPU parallelism.
+- Match NVCC architecture flags (`sm_70` or higher) to your GPU to optimize code generation.
+
+---
+
+## 5. Validation and Verification
+
+After preparing your system:
+
+- Compile the SBNN code using the provided `Makefile`.
+- Run sample binaries (e.g., `./mnist_mlp`) to confirm correct execution.
+- Validate inference accuracy reported matches expected top-1 and top-5 accuracy metrics.
+
+If you encounter issues related to missing devices or CUDA errors, double-check driver versions, GPU availability, and CUDA installation.
+
+---
+
+## 6. Troubleshooting Common Issues
+
+### CUDA Device Not Found
+- Verify your GPU is installed correctly and recognized via `nvidia-smi`.
+- Check that the CUDA driver and toolkit versions are compatible.
+
+### Insufficient Memory Errors
+- Reduce batch size in source files.
+- Monitor GPU memory usage to avoid overflow.
+
+### Compilation Failures
+- Confirm your `nvcc` version supports the flags in `Makefile`.
+- Align architecture flag in Makefile with your actual GPU: update `-arch=sm_xx` accordingly.
+
+### File Not Found or Path Errors
+- Confirm dataset paths and network model config files exist.
+- Modify paths in source files before compiling.
+
+---
+
+## 7. Additional Resources
+- [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
+- [SBNN GitHub Repository](https://github.com/uuudown/SBNN)
+- Refer to the `Makefile` for compiler flags and build instructions
+
+---
+
+> **Check:** Confirm your GPU supports CUDA 7.0 or higher by running `nvidia-smi` and checking compute capability
+
+> **Tip:** Adjust the `dev` variable in key source files like `mnist_mlp.cu` to your target GPU device ID before compilations
+
+---
+
+## Summary
+This page has guided you through the critical system requirements necessary to run SBNN effectively, from hardware and software prerequisites to environment configurations and practical troubleshooting tips. Proper adherence ensures reliable, high-performance binarized neural network inference on supported NVIDIA GPUs.
+
+---
