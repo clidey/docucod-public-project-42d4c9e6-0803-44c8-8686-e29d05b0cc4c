@@ -1,0 +1,111 @@
+---
+title: "Target Audience & Use Cases"
+description: "Identify whether SBNN fits your needs: ideal for ML researchers, engineers in high-performance computing, and practitioners exploring resource-constrained or low-latency ML deployment. Example scenarios include model acceleration on cloud/edge and neural net experimentation."
+---
+
+# Target Audience & Use Cases
+
+## Is SBNN Right for You?
+
+SBNN is designed to deliver blazing-fast, memory-efficient binarized neural network inference on GPUs by leveraging bit-level parallelism and cooperative kernel execution. This page helps you determine whether SBNN suits your specific needs by clearly identifying its ideal users and practical application scenarios.
+
+---
+
+## Who Should Use SBNN?
+
+SBNN specifically addresses the challenges faced by the following groups:
+
+- **Machine Learning Researchers:** Exploring binarized neural networks (BNNs) in experimental and production settings where acceleration and memory efficiency are critical.
+
+- **High-Performance Computing (HPC) Engineers:** Seeking to tap into GPU bit-level parallelism for deploying resource-constrained or latency-sensitive ML workloads.
+
+- **Practitioners in Cloud and Edge Deployment:** Needing efficient BNN inference frameworks optimized for constrained hardware environments or to meet tight latency requirements.
+
+If your work involves accelerating deep neural network inference with binarized weights and activations—especially on GPU platforms—SBNN offers a purpose-built solution able to maximize throughput and minimize memory overhead.
+
+---
+
+## Where SBNN Excels: Practical Use Cases
+
+SBNN’s architecture and software co-design uniquely empower several key scenarios:
+
+### 1. **Model Acceleration on Cloud and Edge Devices**
+Deploying binarized models to either cloud GPUs or edge GPUs demands low-latency inference, often with small batch sizes. SBNN’s bit-level parallelism and single-kernel execution optimize resource utilization, achieving speedups without compromising accuracy.
+
+### 2. **Experimentation with Binarized Networks**
+Researchers testing novel binarized architectures or layer configurations benefit from SBNN’s flexibility and native support for popular models like ResNet, VGG, and AlexNet on datasets ranging from MNIST to ImageNet.
+
+### 3. **Resource-Constrained Deployments**
+SBNN’s memory-compressed weight and activation representations shrink footprint dramatically, fitting demanding models into limited GPU memory budgets encountered in embedded or specialized HPC environments.
+
+### 4. **Latency-Critical Deep Learning Applications**
+By fusing entire neural network inference into a single cooperative CUDA kernel, SBNN eradicates overhead from kernel launches and memory transfers, enabling rapid responses essential for real-time inference systems.
+
+---
+
+## SBNN in Action: Example Scenarios
+
+- **Accelerating ImageNet ResNet-18 on NVIDIA V100** with batch sizes around 32, achieving optimized throughput while maintaining accuracy comparable to floating-point models.
+
+- **Running CIFAR-10 VGG-like and ResNet-14 networks** on mid-range GPUs with resource-efficient binarized computations.
+
+- **Performing MNIST digit classification with a 4-layer MLP** where minimized latency and memory usage speed up model deployment for edge inference.
+
+These scenarios illustrate SBNN’s adaptability and performance across a spectrum of common deep learning tasks.
+
+---
+
+## Why Does This Matter?
+
+Integrating binarized neural networks into real workloads has often been hampered by limited GPU support for bitwise operations and inefficient kernels that cannot effectively utilize hardware. SBNN bridges this gap, providing:
+
+- **Dramatic Speed Improvements:** By leveraging bitwise operations and warp-level cooperation, SBNN delivers inference speed-ups far beyond conventional implementations.
+
+- **Memory Footprint Reduction:** Binary representation of weights and activations reduces storage needs by up to 32x compared to floating-point equivalents.
+
+- **Seamless Model Support:** Complete implementation for a variety of architectures and datasets without sacrificing correctness or requiring major user-side adaptations.
+
+This combination directly translates to faster, cheaper, and more power-efficient machine learning deployments.
+
+---
+
+## How to Assess Suitability for Your Project
+
+Ask yourself:
+
+- Are you deploying or experimenting with binarized neural networks?
+- Do you require high-performance GPU inference with small to moderate batch sizes?
+- Is memory footprint or latency a limiting factor in your deployment environment?
+- Would single-kernel, cooperative execution simplify your GPU programming and improve performance?
+
+If you answered yes to most, SBNN is tailored to unlock value for your use cases.
+
+---
+
+## Next Steps
+
+Ready to explore detailed workflows with SBNN? Consider these complementary documentation pages:
+
+- [Supported Models & Datasets](/overview/product-architecture-features/supported-models-datasets) — Understand which preconfigured models and datasets SBNN supports out of the box.
+- [What is SBNN?](/overview/introduction-core-concepts/what-is-sbnn) — Deepen your conceptual understanding of the framework’s design and core technology.
+- [Choosing Between SBNN-32 and SBNN-64](/guides/advanced-usage-optimization/sbnn32-vs-sbnn64) — Learn which implementation variant best suits your model and GPU hardware.
+
+For practical hands-on, see the guides on running ImageNet-scale ResNet and AlexNet models or CIFAR-10 workflows.
+
+---
+
+<Callout type="tip">
+To maximize performance gains, ensure your deployment scenario aligns with resource constraints and batch size ranges where SBNN’s bit-level parallelism thrives.
+</Callout>
+
+<Callout type="warning">
+SBNN is optimized for binarized inference only and does not support training or non-binary deep learning workloads.
+</Callout>
+
+---
+
+## Summary
+
+SBNN is best suited for users who need accelerated binarized neural network inference on GPUs, particularly in scenarios involving model experimentation, resource-limited deployment, or latency-sensitive applications. It provides a streamlined and highly optimized path to deploy classic networks like ResNet, VGG, AlexNet, and MLPs on standard datasets such as ImageNet, CIFAR-10, and MNIST.
+
+Explore the related documentation to find supported models, architectural explanations, and implementation advice to get started swiftly and with confidence.
