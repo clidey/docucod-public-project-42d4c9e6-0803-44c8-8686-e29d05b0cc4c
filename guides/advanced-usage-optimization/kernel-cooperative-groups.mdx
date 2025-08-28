@@ -1,0 +1,272 @@
+---
+title: "Optimizing Performance with Cooperative GPU Kernels"
+description: "Explains how SBNN leverages CUDA cooperative groups and kernel launches for bit-level parallelism and efficient network execution. Includes practical steps for modifying or extending kernel logic, monitoring runtime performance, and integrating your own measurement/reporting tools."
+---
+
+# Optimizing Performance with Cooperative GPU Kernels
+
+## Overview
+
+This guide details how SBNN leverages CUDA cooperative groups and kernel launches to harness bit-level parallelism, enabling efficient and high-throughput inference of binarized neural networks (BNNs) on NVIDIA GPUs. You will learn how the framework orchestrates the entire network execution within coordinated CUDA kernels, how to track and measure execution performance, and how to extend or customize kernel behavior for your own use cases.
+
+By following this guide, you will understand how to tap into the collective scheduler and synchronization features of modern GPUs to maximize throughput and reduce kernel launch overhead, while integrating runtime monitoring and debugging tools essential for performance tuning.
+
+---
+
+## 1. Understanding the Cooperative Kernel Workflow
+
+SBNN organizes the execution of binarized neural network inference as a sequence of CUDA kernels using **cooperative groups**. This design allows all network layers to run in a single, large cooperative kernel launch, vastly improving efficiency by:
+
+- Eliminating frequent kernel launch overhead between layers
+- Enabling inter-layer synchronization via `this_grid()` cooperative groups
+- Maximizing the utilization of GPU resources through fine-grained warp and block coordination
+
+For example, the MNIST 4-layer MLP (`mnist_mlp64` kernel) runs all layers in a carefully sequenced cooperative kernel, synchronizing between layers with explicit `grid.sync()` calls:
+
+```cpp
+__global__ void mnist_mlp64(In64LayerParam* bin, Fc64LayerParam* fc1, Fc64LayerParam* fc2, 
+        Fc64LayerParam* fc3, Out64LayerParam* bout)
+{
+    grid_group grid = this_grid();   
+    
+    // Input binarization
+    In64Layer(bin);
+    grid.sync();
+
+    // Fully connected layers
+    Fc64Layer(fc1);
+    grid.sync();
+
+    Fc64LayerBatched(fc2);
+    grid.sync();
+
+    Fc64LayerBatched(fc3);
+    grid.sync();
+
+    // Output layer
+    Out64Layer(bout);
+}
+```
+
+Each layer performs its bit-level operations, and the grid synchronization (`grid.sync()`) guarantees that all threads complete their work in a layer before continuing to the next.
+
+
+## 2. Configuring Cooperative Kernel Launches
+
+To launch such cooperative kernels, SBNN uses CUDA's `cudaLaunchCooperativeKernel()` with specific attention to occupancy:
+
+- Determine the number of threads per block (e.g., 1024)
+- Query device properties and maximum active blocks per multiprocessor
+- Calculate the total number of blocks based on the number of SMs
+- Pass the kernel pointer, total grid size, thread count, and kernel arguments
+
+Example snippet from the MNIST MLP main function:
+
+```cpp
+int numThreads = 1024;
+cudaDeviceProp deviceProp;
+cudaGetDeviceProperties(&deviceProp, dev);
+int numBlocksPerSm;
+cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, mnist_mlp64, numThreads, 0);
+void* args[] = {&bin_gpu, &bfc1_gpu, &bfc2_gpu, &bfc3_gpu, &bout_gpu};
+
+START_TIMER;
+cudaLaunchCooperativeKernel((void*)mnist_mlp64, numBlocksPerSm*deviceProp.multiProcessorCount, numThreads, args);
+STOP_TIMER;
+```
+
+This approach dynamically adapts to GPU architecture and maximizes kernel concurrency.
+
+
+## 3. Monitoring Runtime Performance
+
+SBNN embeds built-in timing instrumentation to track and report kernel and layer runtimes with cycle precision:
+
+- **Kernel-Level** timing is done using CUDA events `cudaEvent_t start, stop` to measure the total kernel invocation time.
+- **Layer-Level** timing uses CUDA device function `clock64()` within kernels combined with `grid.sync()` and conditional print statements to output per-layer cycle counts.
+
+Example usage within kernel code:
+
+```cpp
+SET_KERNEL_TIMER;
+
+// Layer execution
+Fc64Layer(fc1);
+grid.sync();
+TICK_KERNEL_TIMER(fc1);
+```
+
+Where `SET_KERNEL_TIMER` and `TICK_KERNEL_TIMER(X)` are macros defined as:
+
+```cpp
+#define SET_KERNEL_TIMER ullong t0 = clock64();
+#define TICK_KERNEL_TIMER(X)  grid.sync(); \
+    if (threadIdx.x==0 && blockIdx.x == 0) printf("Layer-%s takes %lld cycles.\n", (X)->name, clock64()-t0);
+```
+
+This allows precise profiling for each layer's execution inside a cooperative kernel, empowering developers to identify bottlenecks and performance hotspots.
+
+
+## 4. Extending and Modifying Kernel Logic
+
+The SBNN implementation organizes layer operations into distinct kernel functions and encapsulated layer parameter classes (e.g., `In64LayerParam`, `Fc64LayerParam`, `Conv64LayerParam`). To customize or extend kernel behavior:
+
+### Steps:
+
+1. **Locate the Target Kernel or Layer Function:**
+   - For example, `In64Layer()`, `Fc64Layer()`, `Conv64Layer()` are core entry points.
+   - See `sbnn64_param.h` for layer parameter class definitions and associated kernels.
+
+2. **Modify Layer Parameters or Add New Fields:**
+   - Layer classes manage GPU memory pointers for inputs, weights, batch normalization parameters, and outputs.
+   - To add new hyperparameters or flags, extend these classes and ensure `ready()` and `initialize()` methods propagate changes.
+
+3. **Alter Kernel Execution Flow:**
+   - Within the cooperative kernel (e.g., `mnist_mlp64`), insert your calls or extend existing kernel launches.
+   - Respect synchronization points (`grid.sync()`) to maintain correctness.
+
+4. **Integrate Custom Timing or Debugging:**
+   - Utilize `clock64()` and cooperative group synchronization to time your new sections.
+   - Insert debug prints conditionally by thread and block indexes to avoid clutter.
+
+5. **Rebuild and Test:**
+   - Modify Makefile targets as needed.
+   - Measure effects on kernel execution and overall network inference.
+
+
+## 5. Best Practices and Tips
+
+- **Leverage Cooperative Groups Judiciously:**
+  - Use `grid.sync()` only where mandatory to avoid unnecessary stalls.
+  - Use cooperative kernel launches when your GPU supports them (compute capability >= 6.0).
+
+- **Maximize Warp-Level Parallelism:**
+  - Bit-level processing benefits greatly from warp shuffle instructions and ballot functions.
+  - Review the use of `__ballot_sync()`, `__shfl_sync()` calls within kernels to optimize intra-warp data exchange.
+
+- **Batch Size Matters:**
+  - Larger batch sizes improve GPU occupancy and saturate cooperative kernel execution.
+  - For small batches, use batch-optimized versions such as `Fc64LayerBatched()`.
+
+- **Error Checking:**
+  - Use `CUDA_SAFE_CALL` macros after kernel launches and memory operations to detect and report issues early.
+
+- **Resource Allocation and Cleanup:**
+  - Ensure all GPU memory allocations (`cudaMalloc`) have matching releases (`cudaFree`) to prevent leaks.
+
+
+## 6. Troubleshooting Common Issues
+
+| Problem                                       | Solution                                                   |
+| ---------------------------------------------|------------------------------------------------------------|
+| Kernel launch fails with `cudaErrorNotPermitted` | Ensure your GPU and driver support cooperative launches and that the application is launched with correct privileges.|
+| Synchronization deadlocks                    | Confirm all threads reach `grid.sync()`. Avoid divergent control flow before syncs.| 
+| Kernel occupancy is low                      | Tune block/grid sizes using `cudaOccupancyMaxActiveBlocksPerMultiprocessor`, increase batch size.
+| Performance counters show unexpected results| Validate timing macros are called with proper synchronization and thread control.
+
+<Tip>
+If your GPU triggers errors or unexpected behavior, check the compute capability and CUDA version compatibility for cooperative groups. Also, confirm that your kernel does not exceed maximum shared memory or register limits.
+</Tip>
+
+## 7. Integrating Your Own Measurement and Reporting
+
+To further instrument the cooperative kernels or integrate with external profiling:
+
+- **Custom Timers:** Embed additional high-resolution timers using CUDA events or `clock64()` for granular sections.
+- **Logging:** Use controlled `printf` guarded by thread and block indices to selectively emit runtime data.
+- **Profiling Tools:** Utilize NVIDIA Nsight Systems and Nsight Compute to profile kernel launches and warp utilization.
+- **Output Export:** Extend layer param classes to export intermediate layer outputs for off-line analysis.
+
+
+## 8. Related Documentation
+
+- [What Is SBNN?](/overview/introduction-core-concepts/what-is-sbnn): Understand the high-level purpose.
+- [Supported Models & Datasets](/overview/product-architecture-features/supported-models-datasets): See applications across networks.
+- [Running Your First BNN Example](/getting-started/run-validate/running-models): Practical startup guide.
+- [Choosing Between SBNN-32 and SBNN-64](/guides/advanced-usage-optimization/sbnn32-vs-sbnn64): Guidance on mode selection.
+- [System Architecture Overview](/overview/product-architecture-features/architecture-overview): Low-level design principles.
+
+---
+
+## Appendix: Example Kernel Launch and Timing Snippet
+
+```cpp
+// Setup device and batch size
+int dev = 5;
+cudaSetDevice(dev);
+const unsigned batch = 1024;
+
+// Prepare layer parameter pointers...
+In64LayerParam* bin_gpu; // initialized
+Fc64LayerParam* fc1_gpu; // initialized
+// ...
+Out64LayerParam* bout_gpu; // initialized
+
+// Configure kernel launch
+int numThreads = 1024;
+cudaDeviceProp deviceProp;
+cudaGetDeviceProperties(&deviceProp, dev);
+int numBlocksPerSm;
+cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, mnist_mlp64, numThreads, 0);
+
+void* args[] = {&bin_gpu, &fc1_gpu, &fc2_gpu, &fc3_gpu, &bout_gpu};
+
+// Start timing
+START_TIMER;
+
+// Launch cooperative kernel for entire MLP network
+cudaLaunchCooperativeKernel((void*)mnist_mlp64, numBlocksPerSm*deviceProp.multiProcessorCount, numThreads, args);
+
+// End timing
+STOP_TIMER;
+
+// Download and validate outputs
+float* output = bout->download_output();
+validate_prediction(output, image_labels, output_size, batch);
+```
+
+## Appendix: Macros for timing inside kernels
+
+```cpp
+#define SET_KERNEL_TIMER ullong t0 = clock64();
+#define TICK_KERNEL_TIMER(X)  grid.sync(); \
+    if (threadIdx.x==0 && blockIdx.x == 0) printf("Layer-%s takes %lld cycles.\n", (X)->name, clock64()-t0);
+```
+
+Use these macros at the start and end of your kernel sections to measure execution cycles per layer.
+
+---
+
+## Conclusion
+
+Harnessing cooperative groups and kernel launches in CUDA empowers SBNN to deliver highly efficient GPU inference for binarized neural networks. With coordinated synchronization, batch-level optimization, and embedded performance monitoring, users can achieve exceptional throughput while maintaining flexibility to tailor network executions and analyze layer-level performance.
+
+Explore this guide alongside related documentation to master advanced performance tuning and extend SBNN's capabilities for your binarized model workloads.
+
+
+---
+
+<CardGroup cols={2}>
+<Card title="Explore the Core Concepts">
+See the full [What Is SBNN?](/overview/introduction-core-concepts/what-is-sbnn) for foundational principles.
+</Card>
+<Card title="Getting Started With SBNN">
+Follow [Running Your First BNN Example](/getting-started/run-validate/running-models) to launch your initial model.
+</Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+<Card title="Performance Optimization">
+Deep dive with [Choosing Between SBNN-32 and SBNN-64](/guides/advanced-usage-optimization/sbnn32-vs-sbnn64).
+</Card>
+<Card title="System Architecture Details">
+Review [System Architecture Overview](/overview/product-architecture-features/architecture-overview).
+</Card>
+</CardGroup>
+
+
+---
+
+<Source url="https://github.com/uuudown/SBNN" branch="main" paths={[{"path": "mnist_mlp.cu", "range": "30-90"},{"path": "sbnn64_param.h", "range": "10-300"}]} />
+
+
